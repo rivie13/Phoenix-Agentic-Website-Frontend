@@ -48,4 +48,41 @@ See docs:
 
 ## Initial Status
 
-Planning/docs scaffold created. Implementation intentionally deferred for a dedicated frontend coding agent.
+Initial Next.js TypeScript scaffold is in place with route areas for marketing, docs, download, auth, and account dashboard UX.
+
+## Local Development
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Configure environment variables:
+
+```bash
+cp .env.example .env.local
+```
+
+3. Run the app locally:
+
+```bash
+npm run dev
+```
+
+4. Validate quality gates:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+## Implemented Route Areas
+
+- Marketing pages: home, pricing, demos, reviews, blog
+- Docs link page
+- Download UX
+- Account dashboard and account management routes (protected)
+- Billing and donation entry UX (backend delegated)

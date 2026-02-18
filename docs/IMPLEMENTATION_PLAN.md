@@ -7,6 +7,24 @@
 3. Support Entra-based sign-in and account UX.
 4. Support marketing + docs + downloads + donation flows.
 
+## Current implementation status
+
+- Next.js App Router scaffold implemented with TypeScript strict mode.
+- Route areas implemented: `/`, `/pricing`, `/demos`, `/reviews`, `/blog`, `/docs`, `/download`, `/donate`, `/signin`, `/account/*`.
+- Entra sign-in UX wired with `next-auth` Azure AD provider configuration.
+- Reusable backend API client added for public/account/billing endpoint calls.
+- Dashboard and billing UIs include loading, error, and empty-safe states.
+- CI workflow added for lint, typecheck, test, and build.
+
+## Local validation commands
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
 ## Phase 0 — Foundation
 
 - Framework: Next.js (App Router) + TypeScript
