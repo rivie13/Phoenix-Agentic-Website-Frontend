@@ -6,9 +6,12 @@ import { AuthProvider } from "@/components/auth-provider";
 import { SiteShell } from "@/components/site-shell";
 
 export const metadata: Metadata = {
-  title: "Phoenix Agentic Engine",
+  title: "Phoenix — AI-Native Game Development",
   description:
-    "Public website for Phoenix Agentic Engine: pricing, docs, downloads, account, and donations.",
+    "Phoenix is an AI-native Godot fork with a built-in assistant that helps you build games faster. Ask questions, plan changes, and let the agent execute — all inside the editor.",
+  icons: {
+    icon: "/images/phoenix-icon.png",
+  },
 };
 
 interface RootLayoutProps {

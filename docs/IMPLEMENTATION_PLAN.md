@@ -16,6 +16,15 @@
 - Dashboard and billing UIs include loading, error, and empty-safe states.
 - CI workflow added for lint, typecheck, test, and build.
 
+## Content source of truth
+
+Website claims should stay aligned with publish-safe docs in:
+
+- `Phoenix-Agentic-Engine/phoenix_docs_public/` (product and monetization messaging)
+- `Phoenix-Agentic-Engine-Backend/docs/` (backend boundary and public billing/donation authority)
+
+When content is not yet publicly published (for example testimonials or blog posts), website pages should explicitly say it is not yet published.
+
 ## Local validation commands
 
 ```bash
@@ -41,7 +50,7 @@ npm run build
 - Blog index/detail
 - Video demos
 - Customer reviews
-- Donation page (with disclosure: 10% to Godot Foundation)
+- Donation page (with disclosure: 10% of gross donations allocated to Godot Foundation)
 
 ## Phase 2 — Auth + Account UX
 

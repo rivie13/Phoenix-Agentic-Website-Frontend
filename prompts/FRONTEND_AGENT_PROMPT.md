@@ -34,7 +34,7 @@ Implement a production-ready frontend with these route areas:
 3. Auth/session wiring with Entra sign-in UX
 4. Account dashboard pages with loading/error/empty states
 5. Donation page with explicit statement:
-   - 10% of donations are allocated to Godot Foundation support
+   - 10% of gross donations are allocated to Godot Foundation support
 6. CI pipeline for lint/typecheck/test/build
 7. Documentation updates in `/docs`
 

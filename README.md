@@ -10,9 +10,14 @@ The site provides:
 - Account dashboard and management UI
 - Engine download UX (entitlement-aware)
 - Pricing and billing entry points (Stripe checkout + customer portal links)
-- Donation page and disclosure (10% of donations to Godot Foundation)
+- Donation page and disclosure (10% of gross donations allocated to Godot Foundation, per Engine/Backend docs)
 - Product/marketing pages (video demos, customer reviews, blog)
 - Docs link to the current Phoenix engine-compatible Godot docs
+
+Website copy is expected to stay aligned with source docs in:
+
+- `Phoenix-Agentic-Engine/phoenix_docs_public/`
+- `Phoenix-Agentic-Engine-Backend/docs/`
 
 ## Open Source Boundary
 
