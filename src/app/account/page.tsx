@@ -9,6 +9,9 @@ export default function AccountPage() {
         <Link className="button" href="/account/billing">
           Billing
         </Link>
+        <Link className="button" href="/account/orchestration">
+          Orchestration
+        </Link>
         <Link className="button" href="/account/settings">
           Settings
         </Link>

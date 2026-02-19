@@ -36,7 +36,7 @@ All sensitive operations are delegated to the private website backend.
 - Frontend receives ID/access tokens and calls private website backend APIs.
 - Private website backend is the system-of-record for account, billing, entitlements, and downloads.
 - Existing Phoenix agent backend remains separate and focused on runtime/orchestration.
-- Identity linking across both backends is done via stable Entra subject identity.
+- Identity linking across both backends is done via stable Entra identity anchors (`tid` + `oid`, with `sub` fallback).
 
 See docs:
 
@@ -90,4 +90,5 @@ npm run build
 - Docs link page
 - Download UX
 - Account dashboard and account management routes (protected)
+- Account orchestration route (protected, proxied to Phoenix Gateway)
 - Billing and donation entry UX (backend delegated)

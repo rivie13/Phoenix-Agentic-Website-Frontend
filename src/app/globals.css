@@ -425,6 +425,48 @@ img {
   font-weight: 600;
 }
 
+/* ─── Form controls ─── */
+.form-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.form-field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.input-control {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-raised);
+  color: var(--foreground);
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+}
+
+.input-control:focus-visible {
+  outline: 2px solid var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.input-textarea {
+  resize: vertical;
+  min-height: 6.5rem;
+}
+
+.code-block {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg-raised);
+  padding: 0.8rem;
+  color: var(--foreground);
+  font-size: 0.84rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 /* ─── Feature list (bullet-free) ─── */
 .feature-list {
   list-style: none;
