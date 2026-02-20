@@ -70,6 +70,20 @@ Use sub-issues for structured work. See `.github/docs/PROJECT_WORKFLOW.md` for f
 
 Sub-issues can cross repos. A Frontend Feature can be a sub-issue of a cross-repo Epic.
 
+### Issue–branch mapping
+
+| Issue type | Label | Branch pattern | PR target |
+|---|---|---|---|
+| Epic | `epic` | `feature/<topic>` | `main` |
+| Task | `task` | `subfeature/task/<description>` | `feature/<topic>` |
+| Bug | `bug` | `subfeature/bugfix/<description>` | `feature/<topic>` |
+| Refactor | `refactor` | `subfeature/refactor/<description>` | `feature/<topic>` |
+| Test | `test` | `subfeature/test/<description>` | `feature/<topic>` |
+| Docs | `docs` | `subfeature/docs/<description>` | `feature/<topic>` |
+| Chore | `chore` | `subfeature/chore/<description>` | `feature/<topic>` |
+
+When picking a task, identify which `feature/*` branch it belongs to and create the subfeature branch from there.
+
 ## Cross-repo awareness
 
 This is the **Website Frontend** repo (public Next.js site). Related repos:
