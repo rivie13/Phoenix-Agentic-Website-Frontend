@@ -12,13 +12,15 @@
  *     https://<dc>.list-manage.com/subscribe/post?u=<u>&id=<id>
  *  4. Set the NEXT_PUBLIC_MAILCHIMP_ACTION_URL env var.
  *
- * The component uses the `/post-json` variant of the same URL
- * so we can handle success/error client-side without a redirect.
+ * The signup component converts this URL to the `/post-json` variant
+ * for JSONP-based client-side success/error handling.
  */
 
 /** Mailchimp hosted subscribe form action URL. */
-export const mailchimpActionUrl =
+const rawMailchimpActionUrl =
   process.env.NEXT_PUBLIC_MAILCHIMP_ACTION_URL ?? "";
+
+export const mailchimpActionUrl = rawMailchimpActionUrl.trim();
 
 /**
  * Audience-level tag values used to segment alpha vs waitlist signups.
@@ -30,5 +32,26 @@ export const MAILCHIMP_TAGS = {
   WAITLIST: "waitlist-signup",
 } as const;
 
-/** Whether Mailchimp is configured (env var present and non-empty). */
-export const isMailchimpConfigured = mailchimpActionUrl.length > 0;
+function isValidMailchimpActionUrl(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    if (!/^https?:$/.test(parsed.protocol)) {
+      return false;
+    }
+
+    if (!parsed.hostname.endsWith("list-manage.com")) {
+      return false;
+    }
+
+    return /\/subscribe\/post(-json)?$/.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Whether Mailchimp is configured with a valid action URL. */
+export const isMailchimpConfigured = isValidMailchimpActionUrl(mailchimpActionUrl);

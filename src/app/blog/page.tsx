@@ -47,7 +47,7 @@ export default function BlogPage() {
               <article className="card blog-card">
                 <div className="blog-card-header">
                   <Image
-                    alt=""
+                    alt={`Hero image for ${post.title}`}
                     className="blog-card-hero"
                     height={160}
                     src={post.heroImage}
