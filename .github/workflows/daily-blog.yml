@@ -117,7 +117,10 @@ jobs:
 
           ${ACTIVITY}"
 
-          # Call GitHub Models API — Claude Sonnet 4.6 (free via Copilot Pro+, no extra secret)
+          # Call GitHub Models API — GPT-5-chat (free via Copilot Pro+ PAT, no extra cost)
+          # gpt-5-chat: advanced, natural, context-aware — better for blog prose than gpt-5-mini.
+          # Anthropic/Claude is NOT available on GitHub Models.
+          # Model ID confirmed from: https://models.github.ai/catalog/models
           RESPONSE=$(curl -s https://models.inference.ai.azure.com/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -125,7 +128,7 @@ jobs:
               --arg system "$SYSTEM_PROMPT" \
               --arg user "$USER_MESSAGE" \
               '{
-                model: "claude-sonnet-4-6",
+                model: "openai/gpt-5-chat",
                 messages: [
                   {role: "system", content: $system},
                   {role: "user", content: $user}

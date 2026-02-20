@@ -158,7 +158,7 @@ jobs:
    - GET /repos/rivie13/Phoenix-Agentic-Engine/pulls?state=closed&sort=updated
    - GET /repos/rivie13/Phoenix-Agentic-Engine/issues?state=all&since=...
 4. If zero activity → exit early (no post)
-5. Generate blog post text via GitHub Models (Claude Sonnet 4.6)
+5. Generate blog post text via GitHub Models (OpenAI GPT-5-chat)
    - System prompt loaded from prompts/daily-blog-system.md
    - Activity data injected as user message
    - Output: complete .md file with front matter
@@ -210,13 +210,15 @@ on).
 
 | Secret | Purpose |
 |--------|---------|
-| `GH_PAT` | **Required.** Fine-grained PAT with: `repo` write on `Phoenix-Agentic-Website-Frontend` + `repo` write on `rivie13.github.io` + **`models:read`** permission (under "GitHub Models"). This is what lets the workflow call Claude Sonnet 4.6 via GitHub Models. |
+| `GH_PAT` | **Required.** Fine-grained PAT with: `repo` write on `Phoenix-Agentic-Website-Frontend` + `repo` write on `rivie13.github.io` + **`models:read`** permission (under "GitHub Models"). This is what lets the workflow call OpenAI GPT-5-chat via GitHub Models. |
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Bluesky posting (only needed when toggle is on) |
 | `LINKEDIN_ACCESS_TOKEN` | LinkedIn posting (only needed when toggle is on) |
 
-> **Note on token:** The auto-injected `GITHUB_TOKEN` in Actions is a repo installation token — it is **NOT tied to your personal Copilot Pro+ subscription** and will be rejected by GitHub Models. You must use your own `GH_PAT` (fine-grained PAT). With Copilot Pro+, this token unlocks Claude Sonnet 4.6 at 100 req/day at no extra cost.
+> **Note on token:** The auto-injected `GITHUB_TOKEN` in Actions is a repo installation token — it is **NOT tied to your personal Copilot Pro+ subscription** and will be rejected by GitHub Models. You must use your own `GH_PAT` (fine-grained PAT). With Copilot Pro+, this token unlocks GPT-5-chat at 12 req/day at no extra cost.
 
-> **No `OPENAI_API_KEY` needed.** Text generation uses Claude Sonnet 4.6 via GitHub Models (free with Copilot Pro+). Image generation uses Pollinations.ai which is completely free with no auth — FLUX → turbo fallback chain.
+> **Model confirmed from catalog.** Anthropic/Claude is **not available** on GitHub Models. The chosen model is `openai/gpt-5-chat` — "advanced, natural, multimodal, context-aware conversations" — better writing quality than `gpt-5-mini`. Both are `custom` rate-limit tier with 12 req/day (Copilot Pro), so 1 run/day is well within limits. Model ID verified via `GET https://models.github.ai/catalog/models`.
+
+> **No `OPENAI_API_KEY` needed.** Text generation uses GPT-5-chat via GitHub Models (free with Copilot Pro+). Image generation uses Pollinations.ai which is completely free with no auth — FLUX → turbo fallback chain. Note: the `turbo` fallback is **Pollinations.ai's own image model**, not related to GPT Turbo.
 
 All secrets are configured in GitHub repo settings. Social secrets are only
 required when you enable those toggles.
@@ -259,7 +261,7 @@ A separate image prompt template generates the DALL-E prompt:
 | Empty days | Workflow skips if no Engine activity detected |
 | Duplicate posts | Filename is date-stamped; workflow checks if branch/file already exists |
 | Image generation failure | Graceful fallback to Phoenix logo as hero image |
-| Cost | **$0/day** — GitHub Models (Claude Sonnet 4.6) is free with Copilot Pro+; Pollinations.ai image gen is free with no API key |
+| Cost | **$0/day** — GitHub Models (`openai/gpt-5-chat`) is free with Copilot Pro+; Pollinations.ai image gen is free with no API key |
 | Private info leak | Only Engine repo (public) is scanned; Backend is excluded |
 | Social post timing | Social posts only fire after PR merge, not on generation |
 | Accidental social spam | Both social toggles default to `false` |
