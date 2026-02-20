@@ -166,12 +166,54 @@ jobs:
           fi
 
           # Split content into blog post and image prompt
-          BLOG_POST=$(echo "$CONTENT" | sed '/^<!-- IMAGE_PROMPT -->/,$d')
-          IMAGE_PROMPT=$(echo "$CONTENT" | sed -n '/^<!-- IMAGE_PROMPT -->/,$ p' | tail -n +2 | head -1)
+          BLOG_POST_RAW=$(echo "$CONTENT" | sed '/^<!-- IMAGE_PROMPT -->/,$d')
+          IMAGE_PROMPT=$(echo "$CONTENT" | awk '/^<!-- IMAGE_PROMPT -->/{flag=1; next} flag{print}' | sed -E '/^[[:space:]]*```[[:alnum:]_-]*[[:space:]]*$/d; /^[[:space:]]*$/d' | head -1)
+          HAS_IMAGE_PROMPT_MARKER=false
+          if echo "$CONTENT" | grep -q '^<!-- IMAGE_PROMPT -->'; then
+            HAS_IMAGE_PROMPT_MARKER=true
+          fi
+
+          if [ "$HAS_IMAGE_PROMPT_MARKER" = "true" ] && [ -z "$IMAGE_PROMPT" ]; then
+            echo "::error::Generated content contains <!-- IMAGE_PROMPT --> but no valid non-empty image prompt line after it"
+            echo "::error::First 20 lines of raw AI output:"
+            echo "$CONTENT" | head -n 20
+            exit 1
+          fi
+
+          # Normalize generated markdown so frontmatter starts at line 1.
+          # This prevents accidental wrappers like ```markdown ... ``` from being written into the blog file.
+          BLOG_POST=$(echo "$BLOG_POST_RAW" | sed 's/\r$//' | awk '
+            BEGIN { started = 0 }
+            {
+              if (started == 0) {
+                if ($0 ~ /^```[[:alnum:]_-]*[[:space:]]*$/) next
+                if ($0 ~ /^---$/) { started = 1; print; next }
+                next
+              }
+
+              if ($0 ~ /^```[[:alnum:]_-]*[[:space:]]*$/) next
+              print
+            }
+          ')
+
+          if ! echo "$BLOG_POST" | head -n 1 | grep -q '^---$'; then
+            echo "::error::Generated blog post does not start with YAML frontmatter delimiter ('---')"
+            echo "::error::First 5 lines of sanitized output:"
+            echo "$BLOG_POST" | head -n 5
+            exit 1
+          fi
+
+          FRONTMATTER_CLOSE_LINE=$(echo "$BLOG_POST" | awk 'NR > 1 && /^---$/ { print NR; exit }')
+          if [ -z "$FRONTMATTER_CLOSE_LINE" ]; then
+            echo "::error::Generated blog post frontmatter is missing closing YAML delimiter ('---')"
+            echo "::error::First 20 lines of sanitized output:"
+            echo "$BLOG_POST" | head -n 20
+            exit 1
+          fi
 
           # Write blog post
           mkdir -p content/blog
-          echo "$BLOG_POST" > "content/blog/${SLUG}.md"
+          printf "%s" "$BLOG_POST" > "content/blog/${SLUG}.md"
           echo "Blog post written to content/blog/${SLUG}.md"
 
           # Save image prompt for next step
@@ -184,7 +226,7 @@ jobs:
 
           echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
 
-      # ── 7. Generate hero image via Pollinations.ai (free, no API key needed) ──
+      # ── 7. Generate hero image via Pollinations.ai (authenticated gen endpoint) ──
       - name: Generate hero image
         if: >
           steps.existing.outputs.exists == 'false' &&
@@ -203,15 +245,37 @@ jobs:
 
           ENCODED_PROMPT=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read().strip()))" <<< "$PROMPT")
           POLLINATIONS_GEN_BASE="https://gen.pollinations.ai/image/${ENCODED_PROMPT}?width=1792&height=1024&nologo=true"
-          POLLINATIONS_LEGACY_BASE="https://image.pollinations.ai/prompt/${ENCODED_PROMPT}?width=1792&height=1024&nologo=true"
 
-          AUTH_ARGS=()
-          if [ -n "${POLLINATIONS_API_KEY}" ]; then
-            AUTH_ARGS=(-H "Authorization: Bearer ${POLLINATIONS_API_KEY}")
-            echo "Using Pollinations API key auth."
-          else
-            echo "Using anonymous Pollinations access (no API key)."
+          API_KEY=$(echo "${POLLINATIONS_API_KEY}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+          API_KEY=$(echo "${API_KEY}" | sed -E 's/^[Bb]earer[[:space:]]+//')
+
+          if [ -z "${API_KEY}" ]; then
+            echo "::warning::POLLINATIONS_API_KEY is missing. Skipping AI hero generation and using Phoenix logo fallback."
+            sed -i "s|/images/blog/${SLUG}.png|/images/phoenix-icon.png|" "content/blog/${SLUG}.md"
+            echo "Using Phoenix logo as hero image."
+            exit 0
           fi
+
+          AUTH_ARGS=(-H "Authorization: Bearer ${API_KEY}")
+
+          KEY_STATUS=$(curl -sS "https://gen.pollinations.ai/account/key" \
+            "${AUTH_ARGS[@]}" \
+            -H "Accept: application/json" \
+            -o /tmp/pollinations-key-status.json \
+            -w "%{http_code}") || KEY_STATUS="000"
+
+          if [ "${KEY_STATUS}" != "200" ]; then
+            KEY_ERROR=$(jq -r '.error.message // .message // empty' /tmp/pollinations-key-status.json 2>/dev/null || true)
+            if [ -z "${KEY_ERROR}" ]; then
+              KEY_ERROR="Unable to validate Pollinations API key."
+            fi
+            echo "::warning::Pollinations key validation failed (HTTP ${KEY_STATUS}). ${KEY_ERROR} Falling back to Phoenix logo."
+            sed -i "s|/images/blog/${SLUG}.png|/images/phoenix-icon.png|" "content/blog/${SLUG}.md"
+            echo "Using Phoenix logo as hero image."
+            exit 0
+          fi
+
+          echo "Using authenticated Pollinations image generation."
 
           fetch_pollinations_image() {
             local base_url="$1"
@@ -219,9 +283,12 @@ jobs:
             local source_label="$3"
             local attempt=""
             local http_status=""
+            local response_file=""
+            local error_message=""
 
             for attempt in 1 2 3; do
               echo "Attempt ${attempt}/3 via ${source_label} (model: ${model})..."
+              response_file=$(mktemp)
               http_status=$(curl -sSL \
                 "${base_url}&model=${model}" \
                 "${AUTH_ARGS[@]}" \
@@ -230,20 +297,25 @@ jobs:
                 --retry-delay 2 \
                 --retry-connrefused \
                 --max-time 120 \
-                -o "public/images/blog/${SLUG}.png" \
+                -o "${response_file}" \
                 -w "%{http_code}") || http_status="000"
 
-              if [ "$http_status" = "200" ] && [ -s "public/images/blog/${SLUG}.png" ]; then
+              if [ "$http_status" = "200" ] && [ -s "${response_file}" ]; then
+                mv "${response_file}" "public/images/blog/${SLUG}.png"
                 echo "✓ Hero image saved (${source_label}, ${model}) → public/images/blog/${SLUG}.png"
                 return 0
               fi
 
-              rm -f "public/images/blog/${SLUG}.png"
+              error_message=$(jq -r '.error.message // .message // empty' "${response_file}" 2>/dev/null || true)
+              rm -f "${response_file}" "public/images/blog/${SLUG}.png"
 
               if [ "$http_status" = "500" ] || [ "$http_status" = "502" ] || [ "$http_status" = "503" ] || [ "$http_status" = "504" ] || [ "$http_status" = "522" ] || [ "$http_status" = "524" ] || [ "$http_status" = "530" ] || [ "$http_status" = "000" ]; then
                 echo "Transient error (HTTP ${http_status}) from ${source_label}; retrying..."
                 sleep $((attempt * 2))
               else
+                if [ -n "${error_message}" ]; then
+                  echo "::warning::${source_label} returned HTTP ${http_status} for model ${model}: ${error_message}"
+                fi
                 break
               fi
             done
@@ -255,15 +327,10 @@ jobs:
           mkdir -p public/images/blog
           IMAGE_SAVED=false
 
-          # ── Tier 1: New unified endpoint (gen.pollinations.ai) ──
+          # ── Tier 1: Authenticated unified endpoint (gen.pollinations.ai) ──
           if fetch_pollinations_image "${POLLINATIONS_GEN_BASE}" "flux" "gen.pollinations.ai"; then
             IMAGE_SAVED=true
           elif fetch_pollinations_image "${POLLINATIONS_GEN_BASE}" "turbo" "gen.pollinations.ai"; then
-            IMAGE_SAVED=true
-          # ── Tier 2: Legacy endpoint fallback ──
-          elif fetch_pollinations_image "${POLLINATIONS_LEGACY_BASE}" "flux" "image.pollinations.ai legacy"; then
-            IMAGE_SAVED=true
-          elif fetch_pollinations_image "${POLLINATIONS_LEGACY_BASE}" "turbo" "image.pollinations.ai legacy"; then
             IMAGE_SAVED=true
           fi
 

@@ -8,6 +8,8 @@ engine development activity.
 ## Rules
 
 1. **Output format**: A complete Markdown file with YAML front matter.
+  - Do **not** wrap the post in markdown code fences (no ```markdown and no closing ```).
+  - The very first line of output must be `---` (front matter delimiter).
 2. **Front matter** must include exactly these fields:
    ```yaml
    ---
