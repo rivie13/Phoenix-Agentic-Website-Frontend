@@ -26,7 +26,7 @@ same content directory.
 | Delivery method | **PR for review** (never auto-push) | Owner reviews / edits AI output before it goes live |
 | Repos covered | Engine only | Backend is private; Interface can be added later |
 | Social posting | Bluesky + LinkedIn (both opt-in, off by default) | No X/Twitter; toggleable via env vars |
-| Hero images | Pollinations.ai FLUX (free) + Phoenix logo on every post | FLUX via Pollinations costs $0 — no API key; logo is persistent branding below the header |
+| Hero images | Pollinations.ai (`gen` endpoint first, legacy fallback) + Phoenix logo | More reliable than single endpoint; retries + endpoint fallback reduce transient 5xx/530 failures |
 | Skip logic | No post if zero activity | Avoids empty "nothing happened" spam |
 
 ---
@@ -162,12 +162,15 @@ jobs:
    - System prompt loaded from prompts/daily-blog-system.md
    - Activity data injected as user message
    - Output: complete .md file with front matter
-  - Auth: uses workflow `GITHUB_TOKEN` with `permissions: models: read`
+    - Auth: uses workflow `GITHUB_TOKEN` with `permissions: models: read`
 6. If BLOG_IMAGE_ENABLED:
-   - Attempt hero image via Pollinations.ai FLUX (free, no auth)
-   - If FLUX fails → retry with Pollinations.ai `turbo` model (still free, no auth)
-   - If turbo also fails → fall back to Phoenix logo
-   - URL pattern: `https://image.pollinations.ai/prompt/{encoded}?width=1792&height=1024&nologo=true&model={flux|turbo}`
+    - Attempt hero image via Pollinations.ai `gen.pollinations.ai` endpoint first (`flux` then `turbo`)
+    - If `gen` fails (e.g. HTTP 530/5xx), retry with Pollinations legacy endpoint (`image.pollinations.ai`) (`flux` then `turbo`)
+    - Each attempt includes retries/backoff for transient upstream failures
+    - If all endpoint/model attempts fail → fall back to Phoenix logo
+    - URL patterns:
+      - `https://gen.pollinations.ai/image/{encoded}?width=1792&height=1024&nologo=true&model={flux|turbo}`
+      - `https://image.pollinations.ai/prompt/{encoded}?width=1792&height=1024&nologo=true&model={flux|turbo}`
    - Phoenix logo also shown as persistent branding element on every post (below the header, separate from hero image)
 7. Write .md file to content/blog/<date>-engine-daily-update.md
 8. Commit changes to a new branch: blog/<date>-daily-update
@@ -211,12 +214,15 @@ on).
 | Secret | Purpose |
 |--------|---------|
 | `GH_PAT` | **Optional for core blog generation.** Required only when `BLOG_CROSSPOST_GITHUB_PAGES=true` because cross-posting writes to `rivie13.github.io` (a second repo). |
+| `POLLINATIONS_API_KEY` | **Optional.** If set, image requests to Pollinations use authenticated mode (can improve reliability and avoid anonymous-tier limits). If unset, workflow uses anonymous access. |
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Bluesky posting (only needed when toggle is on) |
 | `LINKEDIN_ACCESS_TOKEN` | LinkedIn posting (only needed when toggle is on) |
 
 > **Note on token:** This workflow uses `GITHUB_TOKEN` for GitHub Models inference, with explicit workflow permission `models: read`. If you see an error like "The `models` permission is required", verify that the workflow file includes `permissions: models: read` and rerun.
 
 > **Model confirmed from catalog.** Anthropic/Claude is **not available** on GitHub Models. The chosen model is `openai/gpt-5-chat` — "advanced, natural, multimodal, context-aware conversations" — better writing quality than `gpt-5-mini`. Both are `custom` rate-limit tier with 12 req/day (Copilot Pro), so 1 run/day is well within limits. Model ID verified via `GET https://models.github.ai/catalog/models`.
+
+> **GitHub Models image fallback?** Not currently via the workflow's chat inference API. The catalog currently reports text output modalities for available chat models, so GitHub Models is used for text generation only in this pipeline.
 
 > **No `OPENAI_API_KEY` needed.** Text generation uses GPT-5-chat via GitHub Models (free with Copilot Pro+). Image generation uses Pollinations.ai which is completely free with no auth — FLUX → turbo fallback chain. Note: the `turbo` fallback is **Pollinations.ai's own image model**, not related to GPT Turbo.
 

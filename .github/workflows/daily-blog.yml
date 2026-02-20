@@ -190,6 +190,8 @@ jobs:
           steps.existing.outputs.exists == 'false' &&
           steps.activity.outputs.has_activity == 'true' &&
           vars.BLOG_IMAGE_ENABLED != 'false'
+        env:
+          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
         run: |
           SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
 
@@ -200,45 +202,74 @@ jobs:
           fi
 
           ENCODED_PROMPT=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read().strip()))" <<< "$PROMPT")
-          POLLINATIONS_BASE="https://image.pollinations.ai/prompt/${ENCODED_PROMPT}?width=1792&height=1024&nologo=true"
+          POLLINATIONS_GEN_BASE="https://gen.pollinations.ai/image/${ENCODED_PROMPT}?width=1792&height=1024&nologo=true"
+          POLLINATIONS_LEGACY_BASE="https://image.pollinations.ai/prompt/${ENCODED_PROMPT}?width=1792&height=1024&nologo=true"
+
+          AUTH_ARGS=()
+          if [ -n "${POLLINATIONS_API_KEY}" ]; then
+            AUTH_ARGS=(-H "Authorization: Bearer ${POLLINATIONS_API_KEY}")
+            echo "Using Pollinations API key auth."
+          else
+            echo "Using anonymous Pollinations access (no API key)."
+          fi
+
+          fetch_pollinations_image() {
+            local base_url="$1"
+            local model="$2"
+            local source_label="$3"
+            local attempt=""
+            local http_status=""
+
+            for attempt in 1 2 3; do
+              echo "Attempt ${attempt}/3 via ${source_label} (model: ${model})..."
+              http_status=$(curl -sSL \
+                "${base_url}&model=${model}" \
+                "${AUTH_ARGS[@]}" \
+                -A "PhoenixBlogBot/1.0 (+https://phoenixengine.dev)" \
+                --retry 2 \
+                --retry-delay 2 \
+                --retry-connrefused \
+                --max-time 120 \
+                -o "public/images/blog/${SLUG}.png" \
+                -w "%{http_code}") || http_status="000"
+
+              if [ "$http_status" = "200" ] && [ -s "public/images/blog/${SLUG}.png" ]; then
+                echo "✓ Hero image saved (${source_label}, ${model}) → public/images/blog/${SLUG}.png"
+                return 0
+              fi
+
+              rm -f "public/images/blog/${SLUG}.png"
+
+              if [ "$http_status" = "500" ] || [ "$http_status" = "502" ] || [ "$http_status" = "503" ] || [ "$http_status" = "504" ] || [ "$http_status" = "522" ] || [ "$http_status" = "524" ] || [ "$http_status" = "530" ] || [ "$http_status" = "000" ]; then
+                echo "Transient error (HTTP ${http_status}) from ${source_label}; retrying..."
+                sleep $((attempt * 2))
+              else
+                break
+              fi
+            done
+
+            echo "::warning::${source_label} failed for model ${model} (last HTTP ${http_status})"
+            return 1
+          }
 
           mkdir -p public/images/blog
           IMAGE_SAVED=false
 
-          # ── Tier 1: Pollinations FLUX ──
-          echo "Attempting image via Pollinations.ai (model: flux)..."
-          HTTP_STATUS=$(curl -sL \
-            "${POLLINATIONS_BASE}&model=flux" \
-            -o "public/images/blog/${SLUG}.png" \
-            --max-time 90 \
-            -w "%{http_code}")
-
-          if [ "$HTTP_STATUS" = "200" ] && [ -s "public/images/blog/${SLUG}.png" ]; then
-            echo "✓ Hero image saved (flux) → public/images/blog/${SLUG}.png"
+          # ── Tier 1: New unified endpoint (gen.pollinations.ai) ──
+          if fetch_pollinations_image "${POLLINATIONS_GEN_BASE}" "flux" "gen.pollinations.ai"; then
             IMAGE_SAVED=true
-          else
-            echo "::warning::FLUX failed (HTTP ${HTTP_STATUS}) — trying fallback model: turbo"
-            rm -f "public/images/blog/${SLUG}.png"
-
-            # ── Tier 2: Pollinations turbo ──
-            echo "Attempting image via Pollinations.ai (model: turbo)..."
-            HTTP_STATUS=$(curl -sL \
-              "${POLLINATIONS_BASE}&model=turbo" \
-              -o "public/images/blog/${SLUG}.png" \
-              --max-time 90 \
-              -w "%{http_code}")
-
-            if [ "$HTTP_STATUS" = "200" ] && [ -s "public/images/blog/${SLUG}.png" ]; then
-              echo "✓ Hero image saved (turbo) → public/images/blog/${SLUG}.png"
-              IMAGE_SAVED=true
-            else
-              echo "::warning::Turbo also failed (HTTP ${HTTP_STATUS}) — falling back to Phoenix logo"
-              rm -f "public/images/blog/${SLUG}.png"
-            fi
+          elif fetch_pollinations_image "${POLLINATIONS_GEN_BASE}" "turbo" "gen.pollinations.ai"; then
+            IMAGE_SAVED=true
+          # ── Tier 2: Legacy endpoint fallback ──
+          elif fetch_pollinations_image "${POLLINATIONS_LEGACY_BASE}" "flux" "image.pollinations.ai legacy"; then
+            IMAGE_SAVED=true
+          elif fetch_pollinations_image "${POLLINATIONS_LEGACY_BASE}" "turbo" "image.pollinations.ai legacy"; then
+            IMAGE_SAVED=true
           fi
 
           # ── Tier 3: Phoenix logo fallback ──
           if [ "$IMAGE_SAVED" = "false" ]; then
+            echo "::warning::All Pollinations attempts failed — using Phoenix logo fallback"
             sed -i "s|/images/blog/${SLUG}.png|/images/phoenix-icon.png|" "content/blog/${SLUG}.md"
             echo "Using Phoenix logo as hero image."
           fi
