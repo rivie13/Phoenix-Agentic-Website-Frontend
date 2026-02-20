@@ -11,10 +11,14 @@ permissions:
 
 jobs:
   post-social:
-    # Only run when a blog PR is actually merged (not just closed)
+    # Only run for merged, automated daily-blog PRs.
+    # This ensures social posting is chained to the Daily Blog workflow output.
     if: >
       github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'blog/')
+      startsWith(github.event.pull_request.head.ref, 'blog/') &&
+      startsWith(github.event.pull_request.title, 'blog: engine daily update') &&
+      contains(github.event.pull_request.labels.*.name, 'blog') &&
+      contains(github.event.pull_request.labels.*.name, 'automated')
     runs-on: ubuntu-latest
 
     steps:
