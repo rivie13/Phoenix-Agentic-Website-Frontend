@@ -14,6 +14,7 @@ on:
 # ── Permissions ──
 permissions:
   contents: read
+  models: read
 
 jobs:
   post-social:
@@ -46,6 +47,7 @@ jobs:
           fi
 
           SLUG=$(echo "$SLUG" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+          echo "Resolved social slug: ${SLUG}"
 
           # Validate slug format (allow lowercase letters, digits, and hyphens only).
           # Prevent path traversal and malformed URL/file lookups.
@@ -66,6 +68,7 @@ jobs:
           fi
 
           POST_FILE="content/blog/${SLUG}.md"
+          echo "Looking for post file: ${POST_FILE}"
 
           if [ ! -f "$POST_FILE" ]; then
             echo "::warning::Expected blog post not found at ${POST_FILE} — skipping social"
@@ -93,50 +96,147 @@ jobs:
           echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
           echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
           echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
+          echo "post_file=${POST_FILE}" >> "$GITHUB_OUTPUT"
 
           # Build the public URL (adjust domain as needed)
           echo "url=https://phoenixengine.dev/blog/${SLUG}" >> "$GITHUB_OUTPUT"
 
-      # ── Bluesky ──
-      - name: Post to Bluesky
-        if: >
-          steps.post.outputs.found == 'true' &&
-          vars.BLOG_SOCIAL_BLUESKY == 'true'
+      # ── AI social copy generation (GitHub Models) ──
+      - name: Generate AI social copy
+        id: ai_social
+        if: steps.post.outputs.found == 'true'
         env:
-          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
-          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TITLE="${{ steps.post.outputs.title }}"
           SUMMARY="${{ steps.post.outputs.summary }}"
           URL="${{ steps.post.outputs.url }}"
+          POST_FILE="${{ steps.post.outputs.post_file }}"
+
+          BODY=$(awk '/^---$/{if(++n==2){found=1;next}} found{print}' "$POST_FILE" 2>/dev/null || true)
+          BODY_SNIPPET=$(printf "%s" "$BODY" | tr '\r\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c 1-2600)
+
+          USER_MESSAGE=$(jq -n \
+            --arg title "$TITLE" \
+            --arg summary "$SUMMARY" \
+            --arg url "$URL" \
+            --arg body "$BODY_SNIPPET" \
+            '{
+              task: "Generate social posts from a blog post.",
+              requirements: {
+                bluesky: "<=300 chars total, include URL, include 2-4 relevant hashtags, no markdown/code fences",
+                linkedin: "<=1200 chars, professional and approachable tone, include URL and 3-6 hashtags, no markdown/code fences"
+              },
+              output_format: "Return ONLY valid JSON object: {\"bluesky_text\":\"...\",\"linkedin_text\":\"...\"}",
+              input: {
+                title: $title,
+                summary: $summary,
+                url: $url,
+                body_excerpt: $body
+              }
+            }')
+
+          RESPONSE=$(curl -sS https://models.github.ai/inference/chat/completions \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -d "$(jq -n \
+              --arg user "$USER_MESSAGE" \
+              '{
+                model: "openai/gpt-5-chat",
+                messages: [
+                  {role: "system", content: "You write concise social posts for engineering updates. Output JSON only."},
+                  {role: "user", content: $user}
+                ],
+                temperature: 0.6,
+                max_tokens: 800
+              }')") || RESPONSE=""
+
+          CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+          BLUESKY_TEXT=""
+          LINKEDIN_TEXT=""
+
+          if [ -n "$CONTENT" ]; then
+            PARSED_JSON=$(python3 -c "import re,sys; s=sys.stdin.read(); m=re.search(r'\{[\s\S]*\}', s); print(m.group(0) if m else '')" <<< "$CONTENT")
+            if [ -n "$PARSED_JSON" ]; then
+              BLUESKY_TEXT=$(echo "$PARSED_JSON" | jq -r '.bluesky_text // empty' 2>/dev/null || true)
+              LINKEDIN_TEXT=$(echo "$PARSED_JSON" | jq -r '.linkedin_text // empty' 2>/dev/null || true)
+            fi
+          fi
+
+          {
+            echo "bluesky_text<<EOF"
+            echo "$BLUESKY_TEXT"
+            echo "EOF"
+            echo "linkedin_text<<EOF"
+            echo "$LINKEDIN_TEXT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ -z "$BLUESKY_TEXT" ] || [ -z "$LINKEDIN_TEXT" ]; then
+            echo "::notice::AI social copy unavailable or unparsable; platform steps will use template fallback text."
+          else
+            echo "AI social copy generated successfully."
+          fi
+
+      # ── Bluesky ──
+      - name: Post to Bluesky
+        if: >
+          steps.post.outputs.found == 'true'
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          BLUESKY_TOGGLE_RAW: ${{ vars.BLOG_SOCIAL_BLUESKY || vars.blog_social_bluesky }}
+          AI_BLUESKY_TEXT: ${{ steps.ai_social.outputs.bluesky_text }}
+        run: |
+          TITLE="${{ steps.post.outputs.title }}"
+          SUMMARY="${{ steps.post.outputs.summary }}"
+          URL="${{ steps.post.outputs.url }}"
+
+          BLUESKY_TOGGLE="${BLUESKY_TOGGLE_RAW}"
+          BLUESKY_TOGGLE=$(echo "$BLUESKY_TOGGLE" | tr '[:upper:]' '[:lower:]')
+
+          if [ "$BLUESKY_TOGGLE" != "true" ]; then
+            echo "::notice::Skipping Bluesky post because toggle is not true. BLUESKY_TOGGLE_RAW='${BLUESKY_TOGGLE_RAW}'"
+            exit 0
+          fi
 
           if [ -z "${BLUESKY_HANDLE}" ] || [ -z "${BLUESKY_APP_PASSWORD}" ]; then
             echo "::warning::BLUESKY_HANDLE or BLUESKY_APP_PASSWORD is missing — skipping Bluesky post"
             exit 0
           fi
 
-          # Bluesky post text max is 300 chars; trim summary dynamically so post always succeeds.
-          TAGS="#PhoenixEngine #GameDev #GodotEngine #OpenSource"
-          PREFIX="🤖 ${TITLE}"
+          if [ -n "$AI_BLUESKY_TEXT" ]; then
+            TEXT="$AI_BLUESKY_TEXT"
+          else
+            TAGS="#PhoenixEngine #GameDev #GodotEngine #OpenSource"
+            PREFIX="🤖 ${TITLE}"
 
-          # +6 accounts for separators in final format:
-          # PREFIX\n\nSUMMARY\n\nURL\n\nTAGS
-          FIXED_LEN=$(( ${#PREFIX} + ${#URL} + ${#TAGS} + 6 ))
-          AVAILABLE=$(( 300 - FIXED_LEN ))
+            # +6 accounts for separators in final format:
+            # PREFIX\n\nSUMMARY\n\nURL\n\nTAGS
+            FIXED_LEN=$(( ${#PREFIX} + ${#URL} + ${#TAGS} + 6 ))
+            AVAILABLE=$(( 300 - FIXED_LEN ))
 
-          SUMMARY_TRIMMED="$SUMMARY"
-          if [ "$AVAILABLE" -lt 0 ]; then
-            # Very long title/url edge case.
-            SUMMARY_TRIMMED=""
-          elif [ ${#SUMMARY_TRIMMED} -gt "$AVAILABLE" ]; then
-            if [ "$AVAILABLE" -gt 1 ]; then
-              SUMMARY_TRIMMED="$(printf '%s' "$SUMMARY_TRIMMED" | cut -c 1-$((AVAILABLE-1)))…"
-            else
+            SUMMARY_TRIMMED="$SUMMARY"
+            if [ "$AVAILABLE" -lt 0 ]; then
               SUMMARY_TRIMMED=""
+            elif [ ${#SUMMARY_TRIMMED} -gt "$AVAILABLE" ]; then
+              if [ "$AVAILABLE" -gt 1 ]; then
+                SUMMARY_TRIMMED="$(printf '%s' "$SUMMARY_TRIMMED" | cut -c 1-$((AVAILABLE-1)))…"
+              else
+                SUMMARY_TRIMMED=""
+              fi
             fi
+
+            TEXT=$(printf "%s\n\n%s\n\n%s\n\n%s" "$PREFIX" "$SUMMARY_TRIMMED" "$URL" "$TAGS")
           fi
 
-          TEXT=$(printf "%s\n\n%s\n\n%s\n\n%s" "$PREFIX" "$SUMMARY_TRIMMED" "$URL" "$TAGS")
+          # Enforce Bluesky hard limit.
+          if [ ${#TEXT} -gt 300 ]; then
+            TEXT="$(printf '%s' "$TEXT" | cut -c 1-299)…"
+          fi
 
           # Authenticate with Bluesky
           AUTH_STATUS=$(curl -sS -X POST "https://bsky.social/xrpc/com.atproto.server.createSession" \
@@ -192,23 +292,36 @@ jobs:
       # ── LinkedIn ──
       - name: Post to LinkedIn
         if: >
-          steps.post.outputs.found == 'true' &&
-          vars.BLOG_SOCIAL_LINKEDIN == 'true'
+          steps.post.outputs.found == 'true'
         env:
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
           LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+          LINKEDIN_TOGGLE_RAW: ${{ vars.BLOG_SOCIAL_LINKEDIN || vars.blog_social_linkedin }}
+          AI_LINKEDIN_TEXT: ${{ steps.ai_social.outputs.linkedin_text }}
         run: |
           TITLE="${{ steps.post.outputs.title }}"
           SUMMARY="${{ steps.post.outputs.summary }}"
           URL="${{ steps.post.outputs.url }}"
 
-          TEXT="🤖 ${TITLE}
+          LINKEDIN_TOGGLE="${LINKEDIN_TOGGLE_RAW}"
+          LINKEDIN_TOGGLE=$(echo "$LINKEDIN_TOGGLE" | tr '[:upper:]' '[:lower:]')
 
-          ${SUMMARY}
+          if [ "$LINKEDIN_TOGGLE" != "true" ]; then
+            echo "::notice::Skipping LinkedIn post because toggle is not true. LINKEDIN_TOGGLE_RAW='${LINKEDIN_TOGGLE_RAW}'"
+            exit 0
+          fi
 
-          Read more: ${URL}
+          if [ -n "$AI_LINKEDIN_TEXT" ]; then
+            TEXT="$AI_LINKEDIN_TEXT"
+          else
+            TEXT="🤖 ${TITLE}
 
-          #PhoenixEngine #GameDev #GodotEngine #OpenSource"
+            ${SUMMARY}
+
+            Read more: ${URL}
+
+            #PhoenixEngine #GameDev #GodotEngine #OpenSource"
+          fi
 
           RESPONSE=$(curl -s -X POST "https://api.linkedin.com/v2/ugcPosts" \
             -H "Content-Type: application/json" \
