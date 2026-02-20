@@ -1,0 +1,157 @@
+name: Blog Social — Post to Bluesky & LinkedIn
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# ── Permissions ──
+permissions:
+  contents: read
+
+jobs:
+  post-social:
+    # Only run when a blog PR is actually merged (not just closed)
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'blog/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Extract post metadata ──
+      - name: Extract post info
+        id: post
+        run: |
+          # Find the most recently added blog post
+          LATEST=$(ls -t content/blog/*.md 2>/dev/null | head -1)
+
+          if [ -z "$LATEST" ]; then
+            echo "::warning::No blog post found — skipping social"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+          # Parse front matter (simple grep — no deps needed)
+          TITLE=$(grep '^title:' "$LATEST" | sed 's/^title: *"//;s/"$//')
+          SUMMARY=$(grep '^summary:' "$LATEST" | sed 's/^summary: *"//;s/"$//')
+          SLUG=$(grep '^slug:' "$LATEST" | sed 's/^slug: *"//;s/"$//')
+
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"
+          echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
+
+          # Build the public URL (adjust domain as needed)
+          echo "url=https://phoenixengine.dev/blog/${SLUG}" >> "$GITHUB_OUTPUT"
+
+      # ── Bluesky ──
+      - name: Post to Bluesky
+        if: >
+          steps.post.outputs.found == 'true' &&
+          vars.BLOG_SOCIAL_BLUESKY == 'true'
+        env:
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: |
+          TITLE="${{ steps.post.outputs.title }}"
+          URL="${{ steps.post.outputs.url }}"
+          TEXT="🤖 ${TITLE}
+
+          ${{ steps.post.outputs.summary }}
+
+          ${URL}
+
+          #PhoenixEngine #GameDev #GodotEngine #OpenSource"
+
+          # Authenticate with Bluesky
+          AUTH=$(curl -s -X POST "https://bsky.social/xrpc/com.atproto.server.createSession" \
+            -H "Content-Type: application/json" \
+            -d "{\"identifier\": \"${BLUESKY_HANDLE}\", \"password\": \"${BLUESKY_APP_PASSWORD}\"}")
+
+          DID=$(echo "$AUTH" | jq -r '.did // empty')
+          ACCESS_JWT=$(echo "$AUTH" | jq -r '.accessJwt // empty')
+
+          if [ -z "$DID" ] || [ -z "$ACCESS_JWT" ]; then
+            echo "::warning::Bluesky authentication failed"
+            echo "$AUTH" | jq .
+            exit 0  # Don't fail the workflow over social
+          fi
+
+          # Create post
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+
+          RESPONSE=$(curl -s -X POST "https://bsky.social/xrpc/com.atproto.repo.createRecord" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${ACCESS_JWT}" \
+            -d "$(jq -n \
+              --arg did "$DID" \
+              --arg text "$TEXT" \
+              --arg now "$NOW" \
+              '{
+                repo: $did,
+                collection: "app.bsky.feed.post",
+                record: {
+                  "$type": "app.bsky.feed.post",
+                  text: $text,
+                  createdAt: $now
+                }
+              }')")
+
+          echo "Bluesky post created:"
+          echo "$RESPONSE" | jq -r '.uri // "unknown"'
+
+      # ── LinkedIn ──
+      - name: Post to LinkedIn
+        if: >
+          steps.post.outputs.found == 'true' &&
+          vars.BLOG_SOCIAL_LINKEDIN == 'true'
+        env:
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+        run: |
+          TITLE="${{ steps.post.outputs.title }}"
+          SUMMARY="${{ steps.post.outputs.summary }}"
+          URL="${{ steps.post.outputs.url }}"
+
+          TEXT="🤖 ${TITLE}
+
+          ${SUMMARY}
+
+          Read more: ${URL}
+
+          #PhoenixEngine #GameDev #GodotEngine #OpenSource"
+
+          RESPONSE=$(curl -s -X POST "https://api.linkedin.com/v2/ugcPosts" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${LINKEDIN_ACCESS_TOKEN}" \
+            -H "X-Restli-Protocol-Version: 2.0.0" \
+            -d "$(jq -n \
+              --arg urn "$LINKEDIN_PERSON_URN" \
+              --arg text "$TEXT" \
+              --arg url "$URL" \
+              --arg title "$TITLE" \
+              '{
+                author: $urn,
+                lifecycleState: "PUBLISHED",
+                specificContent: {
+                  "com.linkedin.ugc.ShareContent": {
+                    shareCommentary: {text: $text},
+                    shareMediaCategory: "ARTICLE",
+                    media: [{
+                      status: "READY",
+                      originalUrl: $url,
+                      title: {text: $title}
+                    }]
+                  }
+                },
+                visibility: {
+                  "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"
+                }
+              }')")
+
+          echo "LinkedIn post created:"
+          echo "$RESPONSE" | jq -r '.id // "unknown"'

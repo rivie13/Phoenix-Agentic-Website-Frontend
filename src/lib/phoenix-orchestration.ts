@@ -71,7 +71,7 @@ function resolveActorId(session: Session): string {
 
 export function buildGatewayHeaders(session: Session): Headers {
   const bearerToken =
-    phoenixGatewayClientToken?.trim() ?? session.accessToken?.trim();
+    session.accessToken?.trim() || phoenixGatewayClientToken?.trim();
 
   if (!bearerToken) {
     throw new Error(

@@ -1,0 +1,333 @@
+name: Daily Blog — Engine Update
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 6 AM UTC daily
+  workflow_dispatch: # manual trigger for testing
+
+# ── Permissions ──
+permissions:
+  contents: write
+  pull-requests: write
+
+# ── Concurrency — prevent parallel runs ──
+concurrency:
+  group: daily-blog
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    # Master kill-switch: set BLOG_ENABLED to 'false' in repo variables to stop
+    if: vars.BLOG_ENABLED != 'false'
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──
+      - name: Checkout website frontend
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+
+      # ── 2. Setup Node ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ── 3. Compute date window ──
+      - name: Set date variables
+        id: dates
+        run: |
+          echo "today=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "since=$(date -u -d '24 hours ago' --iso-8601=seconds)" >> "$GITHUB_OUTPUT"
+          echo "display=$(date -u +'%b %d, %Y')" >> "$GITHUB_OUTPUT"
+
+      # ── 4. Check for existing post (avoid duplicates) ──
+      - name: Check for existing post
+        id: existing
+        run: |
+          SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
+          if [ -f "content/blog/${SLUG}.md" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── 5. Fetch engine activity from GitHub API ──
+      - name: Fetch engine activity
+        if: steps.existing.outputs.exists == 'false'
+        id: activity
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="rivie13/Phoenix-Agentic-Engine"
+          SINCE="${{ steps.dates.outputs.since }}"
+
+          echo "Fetching commits since ${SINCE}..."
+          COMMITS=$(gh api "repos/${REPO}/commits?since=${SINCE}&per_page=50" \
+            --jq '[.[] | {sha: .sha[0:7], message: .commit.message | split("\n")[0], author: .commit.author.name, url: .html_url}]')
+
+          echo "Fetching recently closed PRs..."
+          PRS=$(gh api "repos/${REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=30" \
+            --jq "[.[] | select(.merged_at != null and .merged_at >= \"${SINCE}\") | {number, title, user: .user.login, url: .html_url, merged_at: .merged_at}]")
+
+          echo "Fetching recently updated issues..."
+          ISSUES=$(gh api "repos/${REPO}/issues?state=all&sort=updated&since=${SINCE}&per_page=30" \
+            --jq '[.[] | select(.pull_request == null) | {number, title, state, user: .user.login, url: .html_url}]')
+
+          # Count items
+          COMMIT_COUNT=$(echo "$COMMITS" | jq 'length')
+          PR_COUNT=$(echo "$PRS" | jq 'length')
+          ISSUE_COUNT=$(echo "$ISSUES" | jq 'length')
+          TOTAL=$((COMMIT_COUNT + PR_COUNT + ISSUE_COUNT))
+
+          echo "Found: ${COMMIT_COUNT} commits, ${PR_COUNT} merged PRs, ${ISSUE_COUNT} issues"
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "has_activity=false" >> "$GITHUB_OUTPUT"
+            echo "No activity found — skipping blog post."
+          else
+            echo "has_activity=true" >> "$GITHUB_OUTPUT"
+
+            # Write activity data as JSON for the AI prompt
+            jq -n \
+              --argjson commits "$COMMITS" \
+              --argjson prs "$PRS" \
+              --argjson issues "$ISSUES" \
+              '{commits: $commits, merged_prs: $prs, issues: $issues}' > /tmp/activity.json
+
+            echo "Activity data written to /tmp/activity.json"
+          fi
+
+      # ── 6. Generate blog post via GitHub Models (Claude Sonnet 4.6) ──
+      - name: Generate blog post
+        if: steps.existing.outputs.exists == 'false' && steps.activity.outputs.has_activity == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
+          SYSTEM_PROMPT=$(cat prompts/daily-blog-system.md)
+          ACTIVITY=$(cat /tmp/activity.json)
+
+          USER_MESSAGE="Today's date: ${{ steps.dates.outputs.display }}
+          Date (ISO): ${{ steps.dates.outputs.today }}
+          Slug: ${SLUG}
+
+          Here is today's engine activity data (JSON):
+
+          ${ACTIVITY}"
+
+          # Call GitHub Models API — Claude Sonnet 4.6 (free via Copilot Pro+, no extra secret)
+          RESPONSE=$(curl -s https://models.inference.ai.azure.com/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -d "$(jq -n \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg user "$USER_MESSAGE" \
+              '{
+                model: "claude-sonnet-4-6",
+                messages: [
+                  {role: "system", content: $system},
+                  {role: "user", content: $user}
+                ],
+                temperature: 0.7,
+                max_tokens: 2000
+              }')")
+
+          # Extract the generated content
+          CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$CONTENT" ]; then
+            echo "::error::AI generation failed — no content returned"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          # Split content into blog post and image prompt
+          BLOG_POST=$(echo "$CONTENT" | sed '/^<!-- IMAGE_PROMPT -->/,$d')
+          IMAGE_PROMPT=$(echo "$CONTENT" | sed -n '/^<!-- IMAGE_PROMPT -->/,$ p' | tail -n +2 | head -1)
+
+          # Write blog post
+          mkdir -p content/blog
+          echo "$BLOG_POST" > "content/blog/${SLUG}.md"
+          echo "Blog post written to content/blog/${SLUG}.md"
+
+          # Save image prompt for next step
+          if [ -n "$IMAGE_PROMPT" ]; then
+            echo "$IMAGE_PROMPT" > /tmp/image-prompt.txt
+            echo "image_prompt_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_prompt_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
+
+      # ── 7. Generate hero image via Pollinations.ai (free, no API key needed) ──
+      - name: Generate hero image
+        if: >
+          steps.existing.outputs.exists == 'false' &&
+          steps.activity.outputs.has_activity == 'true' &&
+          vars.BLOG_IMAGE_ENABLED != 'false'
+        run: |
+          SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
+
+          if [ -f /tmp/image-prompt.txt ]; then
+            PROMPT=$(cat /tmp/image-prompt.txt)
+          else
+            PROMPT="Abstract digital art, dark background, glowing orange phoenix rising over circuit board patterns, futuristic game engine theme, no text"
+          fi
+
+          ENCODED_PROMPT=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.stdin.read().strip()))" <<< "$PROMPT")
+          POLLINATIONS_BASE="https://image.pollinations.ai/prompt/${ENCODED_PROMPT}?width=1792&height=1024&nologo=true"
+
+          mkdir -p public/images/blog
+          IMAGE_SAVED=false
+
+          # ── Tier 1: Pollinations FLUX ──
+          echo "Attempting image via Pollinations.ai (model: flux)..."
+          HTTP_STATUS=$(curl -sL \
+            "${POLLINATIONS_BASE}&model=flux" \
+            -o "public/images/blog/${SLUG}.png" \
+            --max-time 90 \
+            -w "%{http_code}")
+
+          if [ "$HTTP_STATUS" = "200" ] && [ -s "public/images/blog/${SLUG}.png" ]; then
+            echo "✓ Hero image saved (flux) → public/images/blog/${SLUG}.png"
+            IMAGE_SAVED=true
+          else
+            echo "::warning::FLUX failed (HTTP ${HTTP_STATUS}) — trying fallback model: turbo"
+            rm -f "public/images/blog/${SLUG}.png"
+
+            # ── Tier 2: Pollinations turbo ──
+            echo "Attempting image via Pollinations.ai (model: turbo)..."
+            HTTP_STATUS=$(curl -sL \
+              "${POLLINATIONS_BASE}&model=turbo" \
+              -o "public/images/blog/${SLUG}.png" \
+              --max-time 90 \
+              -w "%{http_code}")
+
+            if [ "$HTTP_STATUS" = "200" ] && [ -s "public/images/blog/${SLUG}.png" ]; then
+              echo "✓ Hero image saved (turbo) → public/images/blog/${SLUG}.png"
+              IMAGE_SAVED=true
+            else
+              echo "::warning::Turbo also failed (HTTP ${HTTP_STATUS}) — falling back to Phoenix logo"
+              rm -f "public/images/blog/${SLUG}.png"
+            fi
+          fi
+
+          # ── Tier 3: Phoenix logo fallback ──
+          if [ "$IMAGE_SAVED" = "false" ]; then
+            sed -i "s|/images/blog/${SLUG}.png|/images/phoenix-icon.png|" "content/blog/${SLUG}.md"
+            echo "Using Phoenix logo as hero image."
+          fi
+
+      # ── 8. Create PR (Phoenix Website Frontend) ──
+      - name: Create pull request
+        if: steps.existing.outputs.exists == 'false' && steps.activity.outputs.has_activity == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
+          BRANCH="blog/${SLUG}"
+          DATE_DISPLAY="${{ steps.dates.outputs.display }}"
+
+          git config user.name "Phoenix Blog Bot"
+          git config user.email "blog-bot@phoenix-engine.dev"
+
+          git checkout -b "${BRANCH}"
+          git add content/blog/ public/images/blog/
+          git commit -m "blog: engine daily update — ${DATE_DISPLAY}"
+          git push origin "${BRANCH}"
+
+          # Build PR body
+          PR_BODY="## 🤖 Automated Daily Blog Post
+
+          **Date**: ${DATE_DISPLAY}
+          **Source**: Engine repo activity from the last 24 hours
+
+          ### Preview
+
+          $(head -30 "content/blog/${SLUG}.md" | tail -20)
+
+          ---
+
+          *This PR was automatically generated. Review the post content and merge when ready.*
+          *Social posts (Bluesky/LinkedIn) will be triggered after merge if enabled.*"
+
+          gh pr create \
+            --title "blog: engine daily update — ${DATE_DISPLAY}" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "${BRANCH}" \
+            --label "blog,automated"
+
+      # ── 9. Cross-post to GitHub Pages (Jekyll) ──
+      # Toggle: set BLOG_CROSSPOST_GITHUB_PAGES to 'true' in repo variables when ready
+      - name: Cross-post to GitHub Pages (Jekyll)
+        if: >
+          steps.existing.outputs.exists == 'false' &&
+          steps.activity.outputs.has_activity == 'true' &&
+          vars.BLOG_CROSSPOST_GITHUB_PAGES == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
+          DATE="${{ steps.dates.outputs.today }}"
+          DATE_DISPLAY="${{ steps.dates.outputs.display }}"
+          JEKYLL_FILENAME="${DATE}-phoenix-engine-update.md"
+
+          # Read the body of the generated post (strip front matter, keep body)
+          BODY=$(awk '/^---$/{if(++n==2){found=1; next}} found{print}' "content/blog/${SLUG}.md")
+
+          # Read summary from front matter
+          SUMMARY=$(grep '^summary:' "content/blog/${SLUG}.md" | sed 's/^summary: *"//;s/"$//')
+          TITLE=$(grep '^title:' "content/blog/${SLUG}.md" | sed 's/^title: *"//;s/"$//')
+
+          # Build Jekyll front matter
+          JEKYLL_POST="---
+          layout: post
+          title: \"${TITLE}\"
+          date: ${DATE} 06:00:00 +0000
+          categories: [Phoenix, Engine]
+          tags: [phoenix-engine, game-dev, godot, ai, daily-update]
+          author: Phoenix Blog Bot
+          ai_generated: true
+          excerpt: \"${SUMMARY}\"
+          image: /assets/images/blog-social-image.png
+          ---
+
+          > **Automated post** — This post was automatically generated by AI from Phoenix Engine activity data. [Read on the Phoenix website](https://phoenixengine.dev/blog/${SLUG}) for the full version with hero image.
+
+          ${BODY}"
+
+          # Push directly to the GitHub Pages repo via API
+          # Encode content as base64
+          CONTENT_B64=$(echo "$JEKYLL_POST" | base64 -w 0)
+
+          # Check if the file already exists to get its SHA (needed for updates)
+          EXISTING=$(gh api "repos/rivie13/rivie13.github.io/contents/_posts/phoenix/${JEKYLL_FILENAME}" \
+            --jq '.sha // empty' 2>/dev/null || true)
+
+          if [ -n "$EXISTING" ]; then
+            echo "File already exists in GitHub Pages repo — skipping"
+          else
+            # Create the file
+            if [ -n "$EXISTING_SHA" ]; then
+              PAYLOAD=$(jq -n \
+                --arg msg "blog: phoenix engine update — ${DATE_DISPLAY}" \
+                --arg content "$CONTENT_B64" \
+                --arg sha "$EXISTING" \
+                '{message: $msg, content: $content, sha: $sha}')
+            else
+              PAYLOAD=$(jq -n \
+                --arg msg "blog: phoenix engine update — ${DATE_DISPLAY}" \
+                --arg content "$CONTENT_B64" \
+                '{message: $msg, content: $content}')
+            fi
+
+            gh api "repos/rivie13/rivie13.github.io/contents/_posts/phoenix/${JEKYLL_FILENAME}" \
+              --method PUT \
+              --input <(echo "$PAYLOAD")
+
+            echo "✓ Cross-posted to rivie13.github.io/_posts/phoenix/${JEKYLL_FILENAME}"
+          fi

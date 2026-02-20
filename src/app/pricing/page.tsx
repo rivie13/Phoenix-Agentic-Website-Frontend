@@ -1,5 +1,13 @@
 import Link from "next/link";
 
+import { type Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Pricing — Phoenix",
+  description:
+    "Phoenix pricing tiers — placeholder pricing subject to change based on alpha and beta testing.",
+};
+
 /* ── Featured managed tiers (shown first) ── */
 const managedOptions = [
   {
@@ -105,12 +113,12 @@ const managedTiers = [
 
 /* ── BYOK (free, de-emphasized) ── */
 const byokFeatures = [
-  "Full Godot-compatible editor",
-  "Ask / Plan / Agent workflow",
-  "Single-agent orchestration",
-  "Core tool integrations",
-  "Your own API keys, your own provider costs",
-  "Offline mode (editor access, no orchestration)",
+  "Full Godot-compatible editor (no AI, no cloud required)",
+  "Ask / Plan / Agent workflow — alpha testers only",
+  "Single-agent orchestration — alpha testers only",
+  "Core tool integrations — alpha testers only",
+  "Your own API keys, your own provider costs (alpha only)",
+  "Offline mode (editor access, no AI features)",
   "Community support",
 ];
 
@@ -120,11 +128,25 @@ const byokExcluded = [
   "Trello & GitHub automation",
   "Usage dashboard or analytics",
   "Premium or fine-tuned models",
+  "Local AI hosting (not yet supported)",
 ];
 
 export default function PricingPage() {
   return (
     <section className="page">
+      {/* ── Alpha/beta placeholder banner ── */}
+      <div className="notice" style={{ borderColor: "var(--accent)", background: "var(--accent-subtle)" }}>
+        <p style={{ color: "var(--foreground)" }}>
+          <strong>Placeholder pricing.</strong> The tiers and request
+          allowances below are preliminary. Final pricing may change based on
+          what we learn during the alpha and beta of the managed service.{" "}
+          <Link className="inline-link" href="/alpha">
+            Join the alpha
+          </Link>{" "}
+          to help us get it right.
+        </p>
+      </div>
+
       <div className="hero">
         <h1>Try the full experience free for 7 days</h1>
         <p className="hero-tagline">
@@ -208,8 +230,10 @@ export default function PricingPage() {
       <div className="section-header" style={{ marginTop: "2rem" }}>
         <h2>Just want the editor?</h2>
         <p>
-          BYOK mode is free forever. Bring your own API keys for single-agent
-          AI, or turn off AI entirely and use Phoenix as a pure Godot editor.
+          BYOK mode is free forever. During the alpha, BYOK AI features (Ask,
+          Plan, Agent) are available to alpha testers only. Without an alpha
+          invite, BYOK gives you the full Godot-compatible editor — no AI,
+          no cloud required.
         </p>
       </div>
 
@@ -236,6 +260,26 @@ export default function PricingPage() {
             Download
           </Link>
         </article>
+      </div>
+
+      {/* ── Local AI notice ── */}
+      <div className="notice">
+        <p>
+          <strong>Local AI is not currently supported.</strong> Phoenix
+          requires a remote model API connection — via the managed service or
+          your own cloud provider keys (BYOK, alpha testers only). Local model
+          hosting (Ollama, LM Studio, etc.) is not yet implemented. Interested
+          in helping build it?{" "}
+          <a
+            className="inline-link"
+            href="https://github.com/rivie13/Phoenix-Agentic-Engine/issues"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Open a feature request on GitHub
+          </a>
+          .
+        </p>
       </div>
     </section>
   );
