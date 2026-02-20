@@ -62,21 +62,25 @@ jobs:
         run: |
           REPO="rivie13/Phoenix-Agentic-Engine"
           SINCE="${{ steps.dates.outputs.since }}"
-          # Search API needs YYYY-MM-DD format for committer-date
-          SINCE_DATE="${{ steps.dates.outputs.today }}"
+          # Derive YYYY-MM-DD from the SINCE timestamp so the 24h window is fully covered.
+          # Using today's date would miss commits made yesterday after SINCE but before midnight.
+          SINCE_DATE=$(echo "${SINCE}" | cut -c1-10)
 
           # Use commit SEARCH API — queries ALL branches, not just default branch.
           # The regular /repos/.../commits endpoint only searches the default branch.
+          # Note: the search API does not expose which branch a commit is on, so we omit that field.
           echo "Fetching commits across all branches since ${SINCE_DATE}..."
           COMMITS=$(gh api \
             -H "Accept: application/vnd.github.cloak-preview" \
             "search/commits?q=repo:${REPO}+committer-date:>=${SINCE_DATE}&sort=committer-date&order=desc&per_page=50" \
-            --jq '[.items[] | {sha: .sha[0:7], message: .commit.message | split("\n")[0], author: .commit.author.name, url: .html_url, branch_context: .repository.default_branch}]')
+            --jq '[.items[] | {sha: .sha[0:7], message: .commit.message | split("\n")[0], author: .commit.author.name, url: .html_url}]')
 
-          # Include ALL PRs (open + merged) updated in window — not just merged ones.
+          # Fetch PRs updated in window, then split into merged vs open for clear AI consumption.
           echo "Fetching recently updated PRs (open + merged)..."
-          PRS=$(gh api "repos/${REPO}/pulls?state=all&sort=updated&direction=desc&per_page=30" \
+          ALL_PRS=$(gh api "repos/${REPO}/pulls?state=all&sort=updated&direction=desc&per_page=30" \
             --jq "[.[] | select(.updated_at >= \"${SINCE}\") | {number, title, state, user: .user.login, url: .html_url, updated_at: .updated_at, merged: (.merged_at != null)}]")
+          MERGED_PRS=$(echo "$ALL_PRS" | jq '[.[] | select(.merged == true)]')
+          OPEN_PRS=$(echo "$ALL_PRS"   | jq '[.[] | select(.merged == false)]')
 
           echo "Fetching recently updated issues..."
           ISSUES=$(gh api "repos/${REPO}/issues?state=all&sort=updated&since=${SINCE}&per_page=30" \
@@ -84,11 +88,12 @@ jobs:
 
           # Count items
           COMMIT_COUNT=$(echo "$COMMITS" | jq 'length')
-          PR_COUNT=$(echo "$PRS" | jq 'length')
+          MERGED_PR_COUNT=$(echo "$MERGED_PRS" | jq 'length')
+          OPEN_PR_COUNT=$(echo "$OPEN_PRS" | jq 'length')
           ISSUE_COUNT=$(echo "$ISSUES" | jq 'length')
-          TOTAL=$((COMMIT_COUNT + PR_COUNT + ISSUE_COUNT))
+          TOTAL=$((COMMIT_COUNT + MERGED_PR_COUNT + OPEN_PR_COUNT + ISSUE_COUNT))
 
-          echo "Found: ${COMMIT_COUNT} commits (all branches), ${PR_COUNT} PRs (open+merged), ${ISSUE_COUNT} issues"
+          echo "Found: ${COMMIT_COUNT} commits (all branches), ${MERGED_PR_COUNT} merged PRs, ${OPEN_PR_COUNT} open PRs, ${ISSUE_COUNT} issues"
 
           if [ "$TOTAL" -eq 0 ]; then
             echo "has_activity=false" >> "$GITHUB_OUTPUT"
@@ -99,9 +104,10 @@ jobs:
             # Write activity data as JSON for the AI prompt
             jq -n \
               --argjson commits "$COMMITS" \
-              --argjson prs "$PRS" \
+              --argjson merged_prs "$MERGED_PRS" \
+              --argjson open_prs "$OPEN_PRS" \
               --argjson issues "$ISSUES" \
-              '{commits: $commits, prs: $prs, issues: $issues}' > /tmp/activity.json
+              '{commits: $commits, merged_prs: $merged_prs, open_prs: $open_prs, issues: $issues}' > /tmp/activity.json
 
             echo "Activity data written to /tmp/activity.json"
           fi

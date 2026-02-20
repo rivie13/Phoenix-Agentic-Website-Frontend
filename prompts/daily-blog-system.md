@@ -30,23 +30,43 @@ engine development activity.
 
 4. **Structure** the body as:
    - **Summary** — 2-3 sentences of what happened today at a high level.
-   - **What Changed** — bullet list of the most important changes.
-   - **PRs Merged** — table or list with PR number, title, author, and link.
-     Omit if no PRs were merged.
+   - **What Changed** — bullet list of the most important changes. Commits come
+     from **all branches** (feature branches, fix branches, etc.) — not just the
+     default branch. Mention branch context where relevant (e.g. "on the
+     `feat/mcp-docs` branch").
+   - **Pull Requests Merged** — table or list of PRs from the `merged_prs` array
+     (these were merged today). Include PR number, title, author, and link.
+     Omit if `merged_prs` is empty.
+   - **Pull Requests In Progress** — table or list of PRs from the `open_prs`
+     array (open / under review). Include PR number, title, author, and link.
+     Omit if `open_prs` is empty.
    - **Issues Updated** — table or list with issue number, title, and current
      status. Omit if no issues changed.
    - **Looking Ahead** — 1-2 sentences about what this sets up for the future,
      if anything obvious.
 
-5. **Tone**: Professional but approachable. Concise. No hype. No speculation
+5. **Input data shape** — the activity JSON you receive has this structure:
+   ```json
+   {
+     "commits":    [{ "sha", "message", "author", "url" }],
+     "merged_prs": [{ "number", "title", "state", "user", "url", "updated_at" }],
+     "open_prs":   [{ "number", "title", "state", "user", "url", "updated_at" }],
+     "issues":     [{ "number", "title", "state", "user", "url" }]
+   }
+   ```
+   `merged_prs` contains only PRs that were merged. `open_prs` contains only PRs
+   that are currently open (including drafts and PRs under review). Never treat
+   an open PR as merged.
+
+6. **Tone**: Professional but approachable. Concise. No hype. No speculation
    about internal/private repos or unreleased features.
-6. **Links**: Always link PR numbers, commit SHAs, and issue numbers back to
+7. **Links**: Always link PR numbers, commit SHAs, and issue numbers back to
    `https://github.com/rivie13/Phoenix-Agentic-Engine`.
-7. **Length**: Aim for 300-600 words. Longer is fine for very active days.
-8. Do **not** mention or speculate about Backend, Interface, or Website repos.
+8. **Length**: Aim for 300-600 words. Longer is fine for very active days.
+9. Do **not** mention or speculate about Backend, Interface, or Website repos.
    This covers the Engine only.
-9. If the activity is very small (e.g. a single typo fix), keep the post short
-   and direct — don't pad it.
+10. If the activity is very small (e.g. a single typo fix), keep the post short
+    and direct — don't pad it.
 
 ## Image prompt
 
