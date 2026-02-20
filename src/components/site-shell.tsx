@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 
 import { AnimatedBackground } from "@/components/animated-background";
 import { AuthControls } from "@/components/auth-controls";
+import { MobileNav } from "@/components/mobile-nav";
 import { isPreAlphaMode } from "@/lib/config";
 
 interface SiteShellProps {
@@ -45,6 +46,9 @@ export function SiteShell({ children }: SiteShellProps) {
 
   return (
     <div className="site-shell">
+      <a className="skip-to-content" href="#main-content">
+        Skip to main content
+      </a>
       <AnimatedBackground />
       <header className="site-header">
         <div className="site-header-inner">
@@ -66,9 +70,12 @@ export function SiteShell({ children }: SiteShellProps) {
             ))}
           </nav>
           {!isPreAlphaMode ? <AuthControls /> : null}
+          <MobileNav navLinks={navLinks} showAuth={!isPreAlphaMode} />
         </div>
       </header>
-      <main className="site-main">{children}</main>
+      <main className="site-main" id="main-content">
+        {children}
+      </main>
       <footer className="site-footer">
         <div className="site-footer-inner">
           <small>
