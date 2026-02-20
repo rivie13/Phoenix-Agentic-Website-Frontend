@@ -2,25 +2,50 @@ import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode } from "react";
 
+import { AnimatedBackground } from "@/components/animated-background";
 import { AuthControls } from "@/components/auth-controls";
+import { isPreAlphaMode } from "@/lib/config";
 
 interface SiteShellProps {
   children: ReactNode;
 }
 
-const navLinks = [
+const fullNavLinks = [
   { href: "/alpha", label: "Alpha" },
   { href: "/pricing", label: "Pricing" },
   { href: "/demos", label: "Demos" },
   { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
+  { href: "/privacy", label: "Privacy" },
   { href: "/donate", label: "Donate" },
   { href: "/download", label: "Download" },
 ];
 
+const preAlphaNavLinks = [
+  { href: "/alpha", label: "Alpha" },
+  { href: "/blog", label: "Blog" },
+  { href: "/privacy", label: "Privacy" },
+];
+
+const fullFooterLinks = [
+  { href: "/docs", label: "Docs" },
+  { href: "/pricing", label: "Pricing" },
+  { href: "/alpha", label: "Alpha" },
+  { href: "/donate", label: "Donate" },
+];
+
+const preAlphaFooterLinks = [
+  { href: "/alpha", label: "Alpha" },
+  { href: "/blog", label: "Blog" },
+];
+
 export function SiteShell({ children }: SiteShellProps) {
+  const navLinks = isPreAlphaMode ? preAlphaNavLinks : fullNavLinks;
+  const footerLinks = isPreAlphaMode ? preAlphaFooterLinks : fullFooterLinks;
+
   return (
     <div className="site-shell">
+      <AnimatedBackground />
       <header className="site-header">
         <div className="site-header-inner">
           <Link className="site-brand" href="/">
@@ -40,7 +65,7 @@ export function SiteShell({ children }: SiteShellProps) {
               </Link>
             ))}
           </nav>
-          <AuthControls />
+          {!isPreAlphaMode ? <AuthControls /> : null}
         </div>
       </header>
       <main className="site-main">{children}</main>
@@ -59,10 +84,12 @@ export function SiteShell({ children }: SiteShellProps) {
             . Godot is a trademark of the Godot Foundation.
           </small>
           <div className="footer-links">
-            <Link href="/docs">Docs</Link>
-            <Link href="/pricing">Pricing</Link>
-            <Link href="/alpha">Alpha</Link>
-            <Link href="/donate">Donate</Link>
+            {footerLinks.map((link) => (
+              <Link href={link.href} key={link.href}>
+                {link.label}
+              </Link>
+            ))}
+            <Link href="/privacy">Privacy</Link>
             <a
               href="https://github.com/rivie13/Phoenix-Agentic-Engine"
               rel="noopener noreferrer"

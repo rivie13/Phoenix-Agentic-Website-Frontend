@@ -17,6 +17,9 @@ export const defaultDocsUrl =
   process.env.NEXT_PUBLIC_DEFAULT_DOCS_URL ??
   "https://docs.godotengine.org/en/latest/";
 
+export const isPreAlphaMode =
+  process.env.NEXT_PUBLIC_PRE_ALPHA_MODE !== "false";
+
 export const isEntraConfigured = Boolean(
   process.env.AZURE_AD_CLIENT_ID &&
     process.env.AZURE_AD_CLIENT_SECRET &&

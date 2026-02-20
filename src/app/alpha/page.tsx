@@ -1,6 +1,7 @@
 import { type Metadata } from "next";
 
 import { MailchimpSignupForm } from "@/components/mailchimp-signup-form";
+import { ScrollReveal } from "@/components/scroll-reveal";
 
 export const metadata: Metadata = {
   title: "Alpha Program — Phoenix",
@@ -10,7 +11,8 @@ export const metadata: Metadata = {
 
 /* ── What alpha testers get ── */
 const alphaPerks = [
-  "Free extended trial of the full managed service (multi-agent orchestration, creative tools, everything)",
+  "Free extended trial of the full managed service — pixel editor, sound designer, agent hub, chat interface, everything",
+  "Early access to all new studio tools as they ship (music editor, Trello/Slack integration, and more)",
   "Direct line to the development team for feedback and bug reports",
   "Early influence on features, pricing, and platform direction",
   "Priority access to the beta when it launches",
@@ -30,73 +32,104 @@ export default function AlphaPage() {
     <section className="page">
       {/* ── Hero ── */}
       <div className="hero">
-        <div className="hero-badge">Limited Alpha &middot; 10–20 Spots</div>
-        <h1>
-          Phoenix is entering alpha
-          <br />
-          and we need testers
-        </h1>
-        <p className="hero-tagline">
-          We&apos;re opening a small, invite-only alpha for 10 to 20 testers
-          who want to push the engine to its limits. Alpha testers get{" "}
-          <strong style={{ color: "var(--foreground)" }}>
-            free extended access
-          </strong>{" "}
-          to the full managed service — multi-agent orchestration, creative
-          AI tools, everything — before the public beta goes out.
-        </p>
+        <ScrollReveal stagger={0}>
+          <div className="hero-badge">Limited Alpha &middot; 10–20 Spots</div>
+        </ScrollReveal>
+        <ScrollReveal stagger={100}>
+          <h1>
+            <span className="gradient-text">Phoenix is entering alpha</span>
+            <br />
+            and we need testers
+          </h1>
+        </ScrollReveal>
+        <ScrollReveal stagger={200}>
+          <p className="hero-tagline">
+            We&apos;re opening a small, invite-only alpha for 10 to 20 testers
+            who want to push the engine to its limits. Phoenix is a whole game
+            studio in one place — pixel editor, sound designer, code editor,
+            agent chat, and multi-agent orchestration — and alpha testers get{" "}
+            <strong style={{ color: "var(--foreground)" }}>
+              free extended access to all of it
+            </strong>{" "}
+            before the public beta goes out.
+          </p>
+        </ScrollReveal>
       </div>
 
       {/* ── Alpha signup ── */}
-      <div className="alpha-signup-block">
-        <MailchimpSignupForm kind="alpha" />
-      </div>
+      <ScrollReveal>
+        <div className="alpha-signup-block">
+          <MailchimpSignupForm kind="alpha" />
+        </div>
+      </ScrollReveal>
+
+      <hr className="section-separator" />
 
       {/* ── What testers get ── */}
-      <div className="section-header">
-        <h2>What alpha testers get</h2>
-      </div>
-      <div style={{ maxWidth: "640px" }}>
-        <article className="card">
-          <ul className="feature-list">
-            {alphaPerks.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-        </article>
-      </div>
+      <ScrollReveal>
+        <div className="section-header">
+          <h2>What alpha testers get</h2>
+        </div>
+      </ScrollReveal>
+      <ScrollReveal>
+        <div style={{ maxWidth: "640px" }}>
+          <article className="card">
+            <ul className="feature-list">
+              {alphaPerks.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
+      </ScrollReveal>
+
+      <hr className="section-separator" />
 
       {/* ── What we're looking for ── */}
-      <div className="section-header">
-        <h2>Who we&apos;re looking for</h2>
-      </div>
-      <div style={{ maxWidth: "640px" }}>
-        <article className="card">
-          <ul className="feature-list">
-            {lookingFor.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
-        </article>
-      </div>
+      <ScrollReveal>
+        <div className="section-header">
+          <h2>Who we&apos;re looking for</h2>
+        </div>
+      </ScrollReveal>
+      <ScrollReveal>
+        <div style={{ maxWidth: "640px" }}>
+          <article className="card">
+            <ul className="feature-list">
+              {lookingFor.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
+      </ScrollReveal>
+
+      <hr className="section-separator" />
 
       {/* ── Waitlist ── */}
-      <div className="section-header">
-        <h2>Alpha full? Join the waitlist</h2>
-        <p>
-          If all alpha slots are taken, join the waitlist. We may open
-          additional spots, and waitlisted users get priority when the public
-          beta launches.
-        </p>
-      </div>
-      <div className="alpha-signup-block">
-        <MailchimpSignupForm kind="waitlist" />
-      </div>
+      <ScrollReveal>
+        <div className="section-header">
+          <h2>Alpha full? Join the waitlist</h2>
+          <p>
+            If all alpha slots are taken, join the waitlist. We may open
+            additional spots, and waitlisted users get priority when the public
+            beta launches.
+          </p>
+        </div>
+      </ScrollReveal>
+      <ScrollReveal>
+        <div className="alpha-signup-block">
+          <MailchimpSignupForm kind="waitlist" />
+        </div>
+      </ScrollReveal>
+
+      <hr className="section-separator" />
 
       {/* ── FAQ ── */}
-      <div className="section-header">
-        <h2>Frequently asked questions</h2>
-      </div>
+      <ScrollReveal>
+        <div className="section-header">
+          <h2>Frequently asked questions</h2>
+        </div>
+      </ScrollReveal>
       <div className="faq-list">
         <details className="faq-item">
           <summary>Is the alpha free?</summary>
@@ -126,12 +159,7 @@ export default function AlphaPage() {
           <summary>What happens after the alpha?</summary>
           <p>
             Alpha testers get priority access to the beta. Pricing and tier
-            details may change based on what we learn during the alpha —
-            see the{" "}
-            <a className="inline-link" href="/pricing">
-              pricing page
-            </a>{" "}
-            for current placeholder details.
+            details may change based on what we learn during the alpha.
           </p>
         </details>
         <details className="faq-item">

@@ -3,8 +3,18 @@
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 
+import { isPreAlphaMode } from "@/lib/config";
+
 export function AuthControls() {
   const { status } = useSession();
+
+  if (isPreAlphaMode) {
+    return (
+      <Link className="button button-primary" href="/alpha">
+        Join alpha waitlist
+      </Link>
+    );
+  }
 
   if (status === "authenticated") {
     return (
