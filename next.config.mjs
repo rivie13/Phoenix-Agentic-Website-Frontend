@@ -5,10 +5,10 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https://login.microsoftonline.com https:",
+  "connect-src 'self' https://login.microsoftonline.com https: https://*.list-manage.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
-  "form-action 'self' https://login.microsoftonline.com",
+  "form-action 'self' https://login.microsoftonline.com https://*.list-manage.com",
 ].join('; ');
 
 const securityHeaders = [

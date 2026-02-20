@@ -1,0 +1,86 @@
+# Git hygiene and GitHub MCP workflow — Phoenix Agentic Website Frontend
+
+## Scope
+
+This file defines branch, commit, validation, and pull request hygiene for the Website Frontend repo.
+Use it whenever making code changes, preparing pull requests, or handling review feedback.
+
+## Branch hygiene
+
+- Always branch from `main` for new work.
+- Keep one focused concern per branch/PR.
+- Branch naming:
+  - `feature/<short-topic>`
+  - `fix/<short-topic>`
+  - `chore/<short-topic>` for non-functional maintenance
+  - `docs/<short-topic>` for documentation-only changes
+  - `feat/<short-topic>` also accepted
+- Avoid direct commits to `main`.
+- Rebase/sync regularly with `main` to reduce merge drift.
+
+## Commit hygiene
+
+- Run validations before commit:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+- Keep commits atomic and reviewable.
+- Commit message style (recommended):
+  - `feat: ...`
+  - `fix: ...`
+  - `chore: ...`
+  - `test: ...`
+  - `docs: ...`
+- Do not include unrelated file changes in the same commit.
+
+## Pull request hygiene
+
+- Prefer GitHub MCP tools for PR operations when available.
+- Before creating PR:
+  - Ensure branch is up to date with `main`
+  - Ensure lint/typecheck/tests pass
+  - Confirm scope is limited to one logical change
+- After creating/updating PR:
+  - Check GitHub Actions/workflow run status for the PR
+  - If any workflow/job fails, fetch logs and fix the root cause
+  - Re-run validations locally and re-trigger/recheck workflow runs
+  - Do not mark PR ready while required checks are failing
+- PR description should include:
+  - What changed
+  - Why it changed
+  - Security boundary notes (especially for auth/API integration changes)
+  - Validation commands and outcomes
+- Treat Copilot review as auto-requested by default when available.
+- Only request Copilot review manually when no Copilot review exists for the latest commit set on the PR.
+
+## Review hygiene (Copilot + humans)
+
+- Fetch and address unresolved review comments.
+- For each comment:
+  1. Reproduce/understand issue
+  2. Apply focused fix
+  3. Re-run relevant validations
+  4. Respond with what changed and why
+- Re-request review when follow-up changes are done.
+
+## GitHub MCP tool preference
+
+Prefer MCP tools over raw terminal git/GitHub commands for:
+- Creating and updating PRs
+- Listing PRs/reviews/comments
+- Checking whether Copilot review already exists
+- Requesting Copilot review only when missing for latest commits
+- Reading and responding to review feedback
+- Listing workflow runs/jobs and reviewing failed logs
+
+Terminal git is still appropriate for local worktree tasks (status, branch, add/commit, rebase, tests).
+
+## Website Frontend quality gate (required before PR readiness)
+
+- `npm run lint` passes
+- `npm run typecheck` passes
+- `npm run test` passes
+- `npm run build` succeeds
+- PR GitHub Actions checks are green (or explicitly understood/waived)
+- No API keys or secrets in client-side code
+- Security boundary rules from `docs/SECURITY_BOUNDARY.md` respected

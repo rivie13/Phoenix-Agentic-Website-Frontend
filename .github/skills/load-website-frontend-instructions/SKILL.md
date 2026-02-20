@@ -28,6 +28,7 @@ All files live in `Phoenix-Agentic-Website-Frontend/.github/instructions/`:
 | `website-frontend-architecture.instructions.md` | Cross-service architecture + Entra linking boundary | For architecture decisions |
 | `website-frontend-roadmap.instructions.md` | Current phase status and milestones | For planning |
 | `website-frontend-strategy.instructions.md` | Feature placement strategy | For scope decisions |
+| `website-frontend-git-hygiene.instructions.md` | Branch/commit/PR/review hygiene and MCP usage | When preparing commits, PRs, and review follow-up |
 
 **Also available**: `website-frontend-code-review.instructions.md` — manual-only, includes `excludeAgent` guard.
 
@@ -49,4 +50,16 @@ read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-fronten
 read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-architecture.instructions.md")
 read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-roadmap.instructions.md")
 read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-strategy.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-git-hygiene.instructions.md")
+```
+
+### Load all (when full context is needed)
+```
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-coding-conventions.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-build-and-test.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-project-structure.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-architecture.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-roadmap.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-strategy.instructions.md")
+read_file("Phoenix-Agentic-Website-Frontend/.github/instructions/website-frontend-git-hygiene.instructions.md")
 ```

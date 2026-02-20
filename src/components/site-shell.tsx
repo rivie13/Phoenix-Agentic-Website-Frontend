@@ -9,6 +9,7 @@ interface SiteShellProps {
 }
 
 const navLinks = [
+  { href: "/alpha", label: "Alpha" },
   { href: "/pricing", label: "Pricing" },
   { href: "/demos", label: "Demos" },
   { href: "/docs", label: "Docs" },
@@ -60,9 +61,10 @@ export function SiteShell({ children }: SiteShellProps) {
           <div className="footer-links">
             <Link href="/docs">Docs</Link>
             <Link href="/pricing">Pricing</Link>
+            <Link href="/alpha">Alpha</Link>
             <Link href="/donate">Donate</Link>
             <a
-              href="https://github.com/godotengine/godot"
+              href="https://github.com/rivie13/Phoenix-Agentic-Engine"
               rel="noopener noreferrer"
               target="_blank"
             >

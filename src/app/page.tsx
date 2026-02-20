@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { MailchimpSignupForm } from "@/components/mailchimp-signup-form";
+
 /* ── Autonomy spectrum ── */
 const spectrum = [
   {
@@ -68,8 +70,8 @@ const highlights = [
   },
   {
     icon: "📦",
-    title: "Works offline",
-    text: "No connection? The full Godot editor still works. You just lose AI features until you're back online.",
+    title: "Editor works offline",
+    text: "No connection? The full Godot-compatible editor still works. AI features require a remote API connection — local AI hosting is not yet supported.",
   },
 ];
 
@@ -77,7 +79,7 @@ export default function HomePage() {
   return (
     <section className="page">
       <div className="hero">
-        <div className="hero-badge">Open Source &middot; MIT Licensed</div>
+        <div className="hero-badge">Alpha Launch &middot; Limited Spots</div>
         <h1>
           A glass factory
           <br />
@@ -87,12 +89,12 @@ export default function HomePage() {
           Most AI tools are dark factories — things happen and you hope for the
           best. Phoenix is a glass factory. Go as deep into creation as you
           want: let agents build entire systems, do everything yourself with no
-          AI at all, or find the spot in the middle where you're most
+          AI at all, or find the spot in the middle where you&apos;re most
           productive. Every wall is transparent. Every switch is yours.
         </p>
         <div className="button-row">
-          <Link className="button button-primary" href="/pricing">
-            Start free trial
+          <Link className="button button-primary" href="/alpha">
+            Join the alpha
           </Link>
           <Link className="button" href="/docs">
             Read the docs
@@ -165,16 +167,91 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* ── CTA ── */}
-      <div className="notice">
+      {/* ── Alpha CTA ── */}
+      <div className="notice" style={{ textAlign: "center" }}>
         <p>
-          <strong>7-day free trial.</strong> Try the full managed experience —
-          multi-agent orchestration, creative tools, everything — with 50
-          request units and no credit card.{" "}
-          <Link className="inline-link" href="/pricing">
-            See pricing
+          <strong>Phoenix is entering alpha.</strong> We&apos;re looking for
+          10–20 testers to get free extended access to the full managed
+          service before the public beta.{" "}
+          <Link className="inline-link" href="/alpha">
+            Learn more &amp; sign up
           </Link>
         </p>
+      </div>
+
+      {/* ── Inline signup ── */}
+      <div className="alpha-signup-block">
+        <MailchimpSignupForm kind="alpha" />
+      </div>
+
+      {/* ── Local AI notice ── */}
+      <div className="notice">
+        <p>
+          <strong>Local AI hosting is not currently supported.</strong> AI
+          features require a remote model API connection — either through the
+          managed service or your own cloud provider keys (BYOK, alpha testers
+          only). Support for local models like Ollama or LM Studio may be added
+          in the future. Want to help build it or vote for it?{" "}
+          <a
+            className="inline-link"
+            href="https://github.com/rivie13/Phoenix-Agentic-Engine/issues"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            Open a feature request on GitHub
+          </a>
+          .
+        </p>
+      </div>
+
+      {/* ── Open source ── */}
+      <div className="section-header">
+        <h2>Open source</h2>
+        <p>
+          Phoenix is built in the open. The engine, SDK, and website are all
+          publicly available on GitHub.
+        </p>
+      </div>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+        <article className="card">
+          <div className="card-icon">🎮</div>
+          <h2>Phoenix Agentic Engine</h2>
+          <p>The Godot fork with the AI runtime, orchestration layer, and editor integrations. MIT licensed.</p>
+          <a
+            className="button"
+            href="https://github.com/rivie13/Phoenix-Agentic-Engine"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            View on GitHub
+          </a>
+        </article>
+        <article className="card">
+          <div className="card-icon">📦</div>
+          <h2>Phoenix Interface SDK</h2>
+          <p>The TypeScript SDK for connecting to the Phoenix backend gateway from the editor and external tools.</p>
+          <a
+            className="button"
+            href="https://github.com/rivie13/Phoenix-Agentic-Engine-Interface"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            View on GitHub
+          </a>
+        </article>
+        <article className="card">
+          <div className="card-icon">🌐</div>
+          <h2>This website</h2>
+          <p>The public website frontend is open source too. Found a bug or want to improve the docs?</p>
+          <a
+            className="button"
+            href="https://github.com/rivie13/Phoenix-Agentic-Website-Frontend"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            View on GitHub
+          </a>
+        </article>
       </div>
     </section>
   );
