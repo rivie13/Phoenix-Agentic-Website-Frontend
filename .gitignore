@@ -19,6 +19,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Active task pointer (local working copy — each dev/agent has their own)
+# The committed stub template lives at .github/context/CURRENT_TASK.md.stub
+.github/context/CURRENT_TASK.md
+
 # OS/Editor
 .DS_Store
 Thumbs.db

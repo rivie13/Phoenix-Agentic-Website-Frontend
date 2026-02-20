@@ -25,3 +25,6 @@ export const isEntraConfigured = Boolean(
     process.env.AZURE_AD_CLIENT_SECRET &&
     process.env.AZURE_AD_TENANT_ID,
 );
+
+export const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://phoenix-agentic.com";

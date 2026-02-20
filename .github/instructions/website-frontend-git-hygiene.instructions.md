@@ -174,6 +174,82 @@ Issues must mirror the branch hierarchy so that work is traceable:
 - When merging the final `feature → main` PR, reference the parent epic with `Closes #N`.
 - This creates a clear audit trail: epic → sub-issues → subfeature PRs → feature PR → main.
 
+## Project board field management (mandatory)
+
+The project board (rivie13/projects/3) has **separate fields** that are NOT labels:
+
+| Field | Type | Values |
+|-------|------|--------|
+| **Priority** | Single select | P0 (Critical), P1 (High), P2 (Medium), P3 (Low) |
+| **Size** | Single select | XS, S, M, L |
+| **Work mode** | Single select | Cloud Agent, Local IDE |
+| **Status** | Single select | Backlog, Ready, In Progress, In Review, Done |
+| **Labels** | GitHub labels | `task`, `epic`, `feature`, `cloud-agent`, etc. |
+
+### Labels vs project fields — never confuse them
+
+- **Labels** are GitHub issue metadata (e.g., `task`, `cloud-agent`). They categorize the issue type and trigger workflows.
+- **Project fields** (Priority, Size, Work mode, Status) are GitHub Projects V2 properties. They live on the project board, NOT on the issue.
+- **NEVER create labels named after project field values** (e.g., `p0: critical`, `size: m`, `local-ide`). This was a past mistake.
+
+### Setting project field values via signal labels
+
+MCP tools cannot set project board fields directly. Use **signal labels** as a bridge:
+
+1. Add transient signal labels to the issue alongside its real labels:
+   ```
+   mcp_github_github_issue_write(method="update", ..., labels=["task", "set:priority:p1", "set:size:m", "set:workmode:local-ide"])
+   ```
+2. The `sync-project-fields.yml` workflow triggers, sets the corresponding project field via GraphQL, and removes the signal label.
+3. The issue ends up with only its real labels (`task`) and the correct project field values.
+
+**Signal label format:** `set:<field>:<value>`
+
+| Signal label | Sets field | To value |
+|---|---|---|
+| `set:priority:p0` | Priority | P0 |
+| `set:priority:p1` | Priority | P1 |
+| `set:priority:p2` | Priority | P2 |
+| `set:priority:p3` | Priority | P3 |
+| `set:size:xs` | Size | XS |
+| `set:size:s` | Size | S |
+| `set:size:m` | Size | M |
+| `set:size:l` | Size | L |
+| `set:workmode:cloud-agent` | Work mode | Cloud Agent |
+| `set:workmode:local-ide` | Work mode | Local IDE |
+| `set:status:backlog` | Status | Backlog |
+| `set:status:ready` | Status | Ready |
+| `set:status:in-progress` | Status | In Progress |
+| `set:status:in-review` | Status | In Review |
+| `set:status:done` | Status | Done |
+
+**Important:** Signal labels must exist in the repo before use. Run the `Sync Project Fields` workflow with the `create-signal-labels` dispatch action to bootstrap them.
+
+### When to set project fields
+
+- **Issue creation/triage:** After creating an issue, add signal labels to set Priority, Size, and Work mode.
+- **Status transitions:** When starting work, set `set:status:in-progress`. When done, set `set:status:done`.
+- **The `cloud-agent` label** already triggers `cloud-agent-assign.yml` which sets Status → In Progress and Work mode → Cloud Agent. You do NOT need separate signal labels for those when using `cloud-agent`.
+
+## Post-merge issue completion (mandatory)
+
+After any PR is merged, **always close linked issues explicitly using MCP tools**. Do NOT rely solely on `Closes #N` in the PR body — GitHub only auto-closes issues when a PR merges into the repo's **default branch** (`main`). Subfeature PRs that merge into `feature/*` branches will NOT auto-close linked issues.
+
+### Required steps after every PR merge:
+
+1. **Close the linked issue:**
+   ```
+   mcp_github_github_issue_write(method="update", owner="rivie13", repo="Phoenix-Agentic-Website-Frontend", issueNumber=<N>, state="closed", stateReason="completed")
+   ```
+
+2. **Close completed sub-issues** — if the merged PR's issue had sub-issues, verify each one whose work is also merged is closed. Close any that remain open.
+
+3. **Close parent epic if all children are done** — if the closed issue was a sub-issue of an epic, read the parent epic to check whether all sibling sub-issues are now closed. If so, close the epic.
+
+4. **Move to "Done"** on the project board.
+
+> **Rule:** A PR is not "fully done" until all linked issues are verified closed. This is as important as passing CI. Never skip this step.
+
 ## Website Frontend quality gate (required before PR readiness)
 
 - `npm run lint` passes

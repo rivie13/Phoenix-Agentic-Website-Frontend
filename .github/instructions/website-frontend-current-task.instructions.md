@@ -8,6 +8,12 @@
 - If the file says "No active task": use the `focus` skill to pick the next task from the roadmap.
 - If you are spawned for a side task (bug fix, tangent): still read CURRENT_TASK.md to understand the main thread. Note in your response that the main task is X and this is a tangent.
 
+## Stub vs working copy
+
+- **`.github/context/CURRENT_TASK.md.stub`** — Immutable template committed to the repo. Copy this to create a new working copy.
+- **`.github/context/CURRENT_TASK.md`** — Local working copy (gitignored). Each developer/agent fills this in for their active task.
+- The stub is the reference template; the working copy is never committed.
+
 ## Project board
 
 All tasks are tracked on the **Phoenix Project Board**: https://github.com/users/rivie13/projects/3
@@ -30,7 +36,7 @@ Use GitHub sub-issues for structured work: **Epic** → **Feature** → **Task**
 
 ## Cloud agent assignment
 
-When an issue is labeled `cloud-agent`, the `cloud-agent-assign.yml` workflow auto-assigns Copilot coding agent. Use this for well-scoped tasks with clear acceptance criteria.
+When an issue is labeled `cloud-agent`, the `cloud-agent-assign.yml` workflow checks that the issue is in **Ready** status on the project board. If not Ready (e.g. still in Backlog), the label is removed and the assignment is rejected. On success, the workflow assigns Copilot and automatically updates the board: Status → In Progress, Work mode → Cloud Agent. Use this for well-scoped tasks with clear acceptance criteria.
 
 ## Cross-repo coordination
 
