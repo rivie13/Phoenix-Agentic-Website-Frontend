@@ -79,7 +79,7 @@ jobs:
           # Fetch PRs updated in window, then split into merged vs open for clear AI consumption.
           echo "Fetching recently updated PRs (open + merged)..."
           ALL_PRS=$(gh api "repos/${REPO}/pulls?state=all&sort=updated&direction=desc&per_page=30" \
-            --jq "[.[] | select(.updated_at >= \"${SINCE}\") | {number, title, state, user: .user.login, url: .html_url, updated_at: .updated_at, merged: (.merged_at != null)}]")
+            --jq "[.[] | select(.updated_at >= \"${SINCE}\") | {number, title, state, draft, user: .user.login, url: .html_url, updated_at: .updated_at, merged: (.merged_at != null), head_ref: .head.ref, base_ref: .base.ref, body_excerpt: ((.body // \"\") | gsub(\"\\r|\\n\"; \" \") | gsub(\" +\"; \" \") | .[0:500])}]")
           MERGED_PRS=$(echo "$ALL_PRS" | jq '[.[] | select(.merged == true)]')
           OPEN_PRS=$(echo "$ALL_PRS"   | jq '[.[] | select(.merged == false)]')
 
