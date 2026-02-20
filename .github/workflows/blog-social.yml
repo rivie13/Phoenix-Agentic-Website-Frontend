@@ -46,6 +46,25 @@ jobs:
           fi
 
           SLUG=$(echo "$SLUG" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+
+          # Validate slug format (allow lowercase letters, digits, and hyphens only).
+          # Prevent path traversal and malformed URL/file lookups.
+          if ! echo "$SLUG" | grep -Eq '^[a-z0-9-]+$'; then
+            echo "::warning::Provided slug '${SLUG}' is invalid — expected lowercase letters, digits, and hyphens only"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # For manual runs, ensure the slug exists on origin/main to avoid posting unmerged/stale branch content.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git fetch --no-tags --depth=1 origin main
+            if ! git cat-file -e "origin/main:content/blog/${SLUG}.md"; then
+              echo "::warning::Slug '${SLUG}' does not exist on origin/main — skipping social"
+              echo "found=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           POST_FILE="content/blog/${SLUG}.md"
 
           if [ ! -f "$POST_FILE" ]; then
@@ -111,7 +130,7 @@ jobs:
             SUMMARY_TRIMMED=""
           elif [ ${#SUMMARY_TRIMMED} -gt "$AVAILABLE" ]; then
             if [ "$AVAILABLE" -gt 1 ]; then
-              SUMMARY_TRIMMED="${SUMMARY_TRIMMED:0:$((AVAILABLE-1))}…"
+              SUMMARY_TRIMMED="$(printf '%s' "$SUMMARY_TRIMMED" | cut -c 1-$((AVAILABLE-1)))…"
             else
               SUMMARY_TRIMMED=""
             fi

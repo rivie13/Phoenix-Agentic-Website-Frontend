@@ -168,6 +168,17 @@ jobs:
           # Split content into blog post and image prompt
           BLOG_POST_RAW=$(echo "$CONTENT" | sed '/^<!-- IMAGE_PROMPT -->/,$d')
           IMAGE_PROMPT=$(echo "$CONTENT" | awk '/^<!-- IMAGE_PROMPT -->/{flag=1; next} flag{print}' | sed -E '/^[[:space:]]*```[[:alnum:]_-]*[[:space:]]*$/d; /^[[:space:]]*$/d' | head -1)
+          HAS_IMAGE_PROMPT_MARKER=false
+          if echo "$CONTENT" | grep -q '^<!-- IMAGE_PROMPT -->'; then
+            HAS_IMAGE_PROMPT_MARKER=true
+          fi
+
+          if [ "$HAS_IMAGE_PROMPT_MARKER" = "true" ] && [ -z "$IMAGE_PROMPT" ]; then
+            echo "::error::Generated content contains <!-- IMAGE_PROMPT --> but no valid non-empty image prompt line after it"
+            echo "::error::First 20 lines of raw AI output:"
+            echo "$CONTENT" | head -n 20
+            exit 1
+          fi
 
           # Normalize generated markdown so frontmatter starts at line 1.
           # This prevents accidental wrappers like ```markdown ... ``` from being written into the blog file.
@@ -180,7 +191,7 @@ jobs:
                 next
               }
 
-              if ($0 ~ /^```[[:space:]]*$/) next
+              if ($0 ~ /^```[[:alnum:]_-]*[[:space:]]*$/) next
               print
             }
           ')
@@ -189,6 +200,14 @@ jobs:
             echo "::error::Generated blog post does not start with YAML frontmatter delimiter ('---')"
             echo "::error::First 5 lines of sanitized output:"
             echo "$BLOG_POST" | head -n 5
+            exit 1
+          fi
+
+          FRONTMATTER_CLOSE_LINE=$(echo "$BLOG_POST" | awk 'NR > 1 && /^---$/ { print NR; exit }')
+          if [ -z "$FRONTMATTER_CLOSE_LINE" ]; then
+            echo "::error::Generated blog post frontmatter is missing closing YAML delimiter ('---')"
+            echo "::error::First 20 lines of sanitized output:"
+            echo "$BLOG_POST" | head -n 20
             exit 1
           fi
 
