@@ -162,7 +162,7 @@ jobs:
    - System prompt loaded from prompts/daily-blog-system.md
    - Activity data injected as user message
    - Output: complete .md file with front matter
-   - Auth: uses existing GH_PAT (needs `models:read` scope) — no new secret
+  - Auth: uses workflow `GITHUB_TOKEN` with `permissions: models: read`
 6. If BLOG_IMAGE_ENABLED:
    - Attempt hero image via Pollinations.ai FLUX (free, no auth)
    - If FLUX fails → retry with Pollinations.ai `turbo` model (still free, no auth)
@@ -210,11 +210,11 @@ on).
 
 | Secret | Purpose |
 |--------|---------|
-| `GH_PAT` | **Required.** Fine-grained PAT with: `repo` write on `Phoenix-Agentic-Website-Frontend` + `repo` write on `rivie13.github.io` + **`models:read`** permission (under "GitHub Models"). This is what lets the workflow call OpenAI GPT-5-chat via GitHub Models. |
+| `GH_PAT` | **Optional for core blog generation.** Required only when `BLOG_CROSSPOST_GITHUB_PAGES=true` because cross-posting writes to `rivie13.github.io` (a second repo). |
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Bluesky posting (only needed when toggle is on) |
 | `LINKEDIN_ACCESS_TOKEN` | LinkedIn posting (only needed when toggle is on) |
 
-> **Note on token:** The auto-injected `GITHUB_TOKEN` in Actions is a repo installation token — it is **NOT tied to your personal Copilot Pro+ subscription** and will be rejected by GitHub Models. You must use your own `GH_PAT` (fine-grained PAT). With Copilot Pro+, this token unlocks GPT-5-chat at 12 req/day at no extra cost.
+> **Note on token:** This workflow uses `GITHUB_TOKEN` for GitHub Models inference, with explicit workflow permission `models: read`. If you see an error like "The `models` permission is required", verify that the workflow file includes `permissions: models: read` and rerun.
 
 > **Model confirmed from catalog.** Anthropic/Claude is **not available** on GitHub Models. The chosen model is `openai/gpt-5-chat` — "advanced, natural, multimodal, context-aware conversations" — better writing quality than `gpt-5-mini`. Both are `custom` rate-limit tier with 12 req/day (Copilot Pro), so 1 run/day is well within limits. Model ID verified via `GET https://models.github.ai/catalog/models`.
 
