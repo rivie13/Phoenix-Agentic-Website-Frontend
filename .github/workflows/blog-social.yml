@@ -25,11 +25,12 @@ jobs:
       - name: Extract post info
         id: post
         run: |
-          # Find the most recently added blog post
-          LATEST=$(ls -t content/blog/*.md 2>/dev/null | head -1)
+          BRANCH_REF="${{ github.event.pull_request.head.ref }}"
+          SLUG="${BRANCH_REF#blog/}"
+          POST_FILE="content/blog/${SLUG}.md"
 
-          if [ -z "$LATEST" ]; then
-            echo "::warning::No blog post found — skipping social"
+          if [ ! -f "$POST_FILE" ]; then
+            echo "::warning::Expected blog post not found at ${POST_FILE} — skipping social"
             echo "found=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -37,9 +38,9 @@ jobs:
           echo "found=true" >> "$GITHUB_OUTPUT"
 
           # Parse front matter (simple grep — no deps needed)
-          TITLE=$(grep '^title:' "$LATEST" | sed 's/^title: *"//;s/"$//')
-          SUMMARY=$(grep '^summary:' "$LATEST" | sed 's/^summary: *"//;s/"$//')
-          SLUG=$(grep '^slug:' "$LATEST" | sed 's/^slug: *"//;s/"$//')
+          TITLE=$(grep '^title:' "$POST_FILE" | sed 's/^title: *"//;s/"$//')
+          SUMMARY=$(grep '^summary:' "$POST_FILE" | sed 's/^summary: *"//;s/"$//')
+          SLUG=$(grep '^slug:' "$POST_FILE" | sed 's/^slug: *"//;s/"$//')
 
           echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
           echo "summary=${SUMMARY}" >> "$GITHUB_OUTPUT"

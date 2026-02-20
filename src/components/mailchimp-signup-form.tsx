@@ -2,7 +2,11 @@
 
 import { type FormEvent, useState } from "react";
 
-import { isMailchimpConfigured, mailchimpActionUrl } from "@/lib/mailchimp";
+import {
+  isMailchimpConfigured,
+  mailchimpActionUrl,
+  MAILCHIMP_TAGS,
+} from "@/lib/mailchimp";
 
 type SignupKind = "alpha" | "waitlist";
 
@@ -25,6 +29,92 @@ const labels: Record<SignupKind, { heading: string; button: string; success: str
       "You're on the waitlist! We'll notify you when more spots open or when the beta begins.",
   },
 };
+
+const signupSourceByKind: Record<SignupKind, string> = {
+  alpha: MAILCHIMP_TAGS.ALPHA,
+  waitlist: MAILCHIMP_TAGS.WAITLIST,
+};
+
+interface MailchimpJsonpResponse {
+  result?: "success" | "error";
+  msg?: string;
+}
+
+const CALLBACK_TIMEOUT_MS = 10_000;
+
+function toPostJsonUrl(actionUrl: string): URL {
+  const url = new URL(actionUrl);
+  if (url.pathname.endsWith("/post")) {
+    url.pathname = url.pathname.replace(/\/post$/, "/post-json");
+  }
+  return url;
+}
+
+function toUserFriendlyError(message?: string): string {
+  if (!message) {
+    return "Something went wrong — please try again.";
+  }
+
+  const stripped = message
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!stripped) {
+    return "Something went wrong — please try again.";
+  }
+
+  return stripped;
+}
+
+function submitMailchimpJsonp(
+  actionUrl: string,
+  email: string,
+  signupSource: string,
+): Promise<MailchimpJsonpResponse> {
+  return new Promise((resolve, reject) => {
+    const callbackName =
+      `mailchimp_jsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const url = toPostJsonUrl(actionUrl);
+
+    url.searchParams.set("EMAIL", email);
+    url.searchParams.set("SIGNUP_SRC", signupSource);
+    url.searchParams.set("c", callbackName);
+
+    const script = document.createElement("script");
+    script.src = url.toString();
+
+    type JsonpCallback = (payload: MailchimpJsonpResponse) => void;
+    const globalScope =
+      window as unknown as Record<string, JsonpCallback | undefined>;
+
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Mailchimp request timed out."));
+    }, CALLBACK_TIMEOUT_MS);
+
+    function cleanup() {
+      window.clearTimeout(timeoutId);
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+      delete globalScope[callbackName];
+    }
+
+    globalScope[callbackName] = (payload: MailchimpJsonpResponse) => {
+      cleanup();
+      resolve(payload);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Could not submit signup request."));
+    };
+
+    document.body.appendChild(script);
+  });
+}
 
 /**
  * Lightweight client-side Mailchimp signup form.
@@ -58,17 +148,19 @@ export function MailchimpSignupForm({ kind }: MailchimpSignupFormProps) {
     }
 
     try {
-      // Mailchimp's /post-json endpoint supports JSONP — but we can also
-      // submit as a plain form POST which redirects to a Mailchimp-hosted
-      // "thank you" page. For a nicer UX we use fetch in no-cors mode and
-      // treat a network success as confirmed (Mailchimp always returns 200
-      // for valid submissions).
-      const url = new URL(mailchimpActionUrl);
-      url.searchParams.set("EMAIL", email);
-      url.searchParams.set("SIGNUP_SRC", kind);
+      const response = await submitMailchimpJsonp(
+        mailchimpActionUrl,
+        email,
+        signupSourceByKind[kind],
+      );
 
-      await fetch(url.toString(), { method: "GET", mode: "no-cors" });
-      setStatus("success");
+      if (response.result === "success") {
+        setStatus("success");
+        return;
+      }
+
+      setStatus("error");
+      setErrorMsg(toUserFriendlyError(response.msg));
     } catch {
       setStatus("error");
       setErrorMsg("Something went wrong — please try again.");

@@ -53,7 +53,32 @@ export function getAllPosts(): PostMeta[] {
     return parseFrontMatter(fileNameToSlug(file), raw);
   });
 
-  return posts.sort((a, b) => (a.date > b.date ? -1 : 1));
+  return posts.sort((a, b) => {
+    const aHasDate = a.date.length > 0;
+    const bHasDate = b.date.length > 0;
+
+    if (aHasDate && bHasDate) {
+      if (a.date > b.date) {
+        return -1;
+      }
+
+      if (a.date < b.date) {
+        return 1;
+      }
+
+      return a.slug.localeCompare(b.slug);
+    }
+
+    if (aHasDate) {
+      return -1;
+    }
+
+    if (bHasDate) {
+      return 1;
+    }
+
+    return a.slug.localeCompare(b.slug);
+  });
 }
 
 /** Return every known slug (for static-param generation). */

@@ -106,12 +106,17 @@ jobs:
             echo "Activity data written to /tmp/activity.json"
           fi
 
-      # ── 6. Generate blog post via GitHub Models (Claude Sonnet 4.6) ──
+      # ── 6. Generate blog post via GitHub Models (GPT-5-chat) ──
       - name: Generate blog post
         if: steps.existing.outputs.exists == 'false' && steps.activity.outputs.has_activity == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::GH_PAT secret is required for blog generation via GitHub Models."
+            exit 1
+          fi
+
           SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
           SYSTEM_PROMPT=$(cat prompts/daily-blog-system.md)
           ACTIVITY=$(cat /tmp/activity.json)
@@ -245,7 +250,10 @@ jobs:
           git config user.email "blog-bot@phoenix-engine.dev"
 
           git checkout -b "${BRANCH}"
-          git add content/blog/ public/images/blog/
+          git add content/blog/
+          if [ -d "public/images/blog" ] && [ -n "$(ls -A public/images/blog 2>/dev/null)" ]; then
+            git add public/images/blog/
+          fi
           git commit -m "blog: engine daily update — ${DATE_DISPLAY}"
           git push origin "${BRANCH}"
 
@@ -321,19 +329,11 @@ jobs:
           if [ -n "$EXISTING" ]; then
             echo "File already exists in GitHub Pages repo — skipping"
           else
-            # Create the file
-            if [ -n "$EXISTING_SHA" ]; then
-              PAYLOAD=$(jq -n \
-                --arg msg "blog: phoenix engine update — ${DATE_DISPLAY}" \
-                --arg content "$CONTENT_B64" \
-                --arg sha "$EXISTING" \
-                '{message: $msg, content: $content, sha: $sha}')
-            else
-              PAYLOAD=$(jq -n \
-                --arg msg "blog: phoenix engine update — ${DATE_DISPLAY}" \
-                --arg content "$CONTENT_B64" \
-                '{message: $msg, content: $content}')
-            fi
+            # Create the file (no SHA needed for creation).
+            PAYLOAD=$(jq -n \
+              --arg msg "blog: phoenix engine update — ${DATE_DISPLAY}" \
+              --arg content "$CONTENT_B64" \
+              '{message: $msg, content: $content}')
 
             gh api "repos/rivie13/rivie13.github.io/contents/_posts/phoenix/${JEKYLL_FILENAME}" \
               --method PUT \
