@@ -7,10 +7,9 @@ description: Create, update, and manage GitHub pull requests for the Website Fro
 
 ## CLI tool policy (mandatory)
 
-- **NEVER use `gh` CLI** — it is not installed and must not be used.
-- **Always prefer GitHub MCP tools** (`mcp_github_*`) for all GitHub operations.
-- Fall back to terminal `git` commands only for local worktree operations or when MCP tools fail.
-- Do NOT suggest or attempt any `gh` subcommand.
+- **Prefer GitHub MCP tools** (`mcp_github_*`) for structured GitHub operations.
+- **`gh` CLI is allowed and supported**; use it when MCP capability is unavailable/insufficient, and for project/GraphQL-heavy operations.
+- Use terminal `git` commands for local worktree operations.
 
 ## Repo Context
 
@@ -126,9 +125,9 @@ mcp_github_github_request_copilot_review(owner="rivie13", repo="Phoenix-Agentic-
 - `subfeature/docs/<name>` — documentation within a feature
 - `subfeature/chore/<name>` — maintenance/tooling within a feature
 
-## Issue creation (public repo — never use `gh` CLI)
+## Issue creation (public repo — MCP preferred, `gh` fallback allowed)
 
-- Create issues using `mcp_github_github_issue_write`.
+- Prefer creating issues using `mcp_github_github_issue_write`; `gh issue create` is acceptable when MCP is unavailable.
 - For non-sensitive, public-facing work: assign to Copilot (cloud agent) using `mcp_github_github_assign_copilot_to_issue`.
 - Do NOT create public issues for private/sensitive matters (secrets, auth, proprietary logic, security vulnerabilities).
 - Search for existing issues before creating duplicates using `mcp_github_github_search_issues`.
@@ -162,9 +161,9 @@ mcp_github_github_issue_write(method="update", ..., labels=["task", "set:priorit
 
 The `sync-project-fields.yml` workflow sets the field via GraphQL and removes the signal label automatically.
 
-**Signal labels:** `set:priority:p0`–`p3`, `set:size:xs`/`s`/`m`/`l`, `set:workmode:cloud-agent`/`local-ide`, `set:status:backlog`/`ready`/`in-progress`/`in-review`/`done`.
+**Signal labels:** `set:priority:p0`–`p3`, `set:size:xs`/`s`/`m`/`l`, `set:workmode:cloud-agent`/`local-ide`/`cli-agent`, `set:status:backlog`/`ready`/`in-progress`/`in-review`/`done`, `set:area:<area-name>`.
 
-For `cloud-agent` labeled issues, `cloud-agent-assign.yml` already handles Work mode + Status — only add priority and size signal labels.
+For `cloud-agent` labeled issues, `cloud-agent-assign.yml` already handles Work mode + Status — only add priority, size, and area signal labels.
 
 ## Post-merge issue completion (mandatory)
 
