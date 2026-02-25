@@ -277,8 +277,7 @@ Agents (Local IDE, CLI, Cloud) MUST handle their own git workflow end-to-end. Th
 5. **Fill in the PR description** — summary, changes, testing done, related issues
 6. **Request Copilot review** if not auto-triggered
 7. **Close the issue explicitly** after PR merge — use `mcp_github_github_issue_write` (do not rely on `Closes #N` for non-default-branch merges)
-8. **Delete the task file** (`tasks/TASK-{N}.md` or reset `CURRENT_TASK.md`) after completion
-9. **Delete the branch** after merge if GitHub auto-delete is not configured
+8. **Delete the branch** after merge if GitHub auto-delete is not configured
 
 ### What the human does NOT need to do
 

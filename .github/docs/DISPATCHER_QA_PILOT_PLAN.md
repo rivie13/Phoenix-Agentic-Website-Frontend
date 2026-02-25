@@ -9,12 +9,13 @@ This plan is split into two phases:
 1. **Phase A — Documentation alignment (current phase)**
    - Define target workflow, statuses, and responsibilities.
    - Update skills/instructions so tooling guidance matches current environment.
+   - Stand up the dedicated webhook-server/control-plane repo scaffold in this workspace (`Phoenix-Agentic-Workspace-Supervisor`) as the pilot control-plane reference.
    - No workflow logic or automation behavior changes in this phase.
 
 2. **Phase B — Implementation rollout (after explicit go-ahead)**
    - Update GitHub workflows and board automation mappings.
    - Validate end-to-end dispatch and QA transitions.
-   - Stand up the dedicated webhook-server/control-plane repo and validate the two-repo pilot topology (Website Frontend + control-plane).
+   - Validate the two-repo pilot topology (Website Frontend + `Phoenix-Agentic-Workspace-Supervisor`).
    - Replicate to the other four Phoenix repos after pilot validation, including board-only coordination scrub.
 
 ## Target operating model
@@ -69,9 +70,9 @@ Use two queue layers in parallel:
 
 Rule: repo loops never read external webhooks directly; they consume supervisor-produced queue messages only.
 
-Implementation note: this workspace supervisor/control-plane can live in this workspace as a dedicated separate repo if desired (webhook ingress + queue state + routing services).
+Implementation note: this workspace supervisor/control-plane now lives in this workspace as a dedicated separate repo: `Phoenix-Agentic-Workspace-Supervisor` (webhook ingress + queue state + routing services).
 
-Pilot rollout note: treat Website Frontend + the dedicated webhook-server/control-plane repo as the initial reference pair. After that pair is stable, this document is the blueprint for applying the same model to Engine, Backend, Interface, and Website Backend.
+Pilot rollout note: treat Website Frontend + `Phoenix-Agentic-Workspace-Supervisor` as the initial reference pair. After that pair is stable, this document is the blueprint for applying the same model to Engine, Backend, Interface, and Website Backend.
 
 ### Dispatch-to-prompt pipeline (required behavior)
 
@@ -86,6 +87,7 @@ For each dispatchable event:
 ### CLI invocation contract (local)
 
 - Dispatcher-driven local runs should call the available CLI agents directly (Codex CLI and/or GitHub Copilot CLI).
+- Default selection order is cost-aware: **Codex CLI first**, then **Copilot CLI fallback** when Codex quota/availability is exhausted.
 - Prompt files are first-class inputs to these invocations.
 - Prompt content is generated from webhook/board arguments so the agent starts with task-specific context rather than static boilerplate.
 
