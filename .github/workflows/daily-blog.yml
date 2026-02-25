@@ -60,6 +60,10 @@ jobs:
         id: activity
         env:
           GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          BLOG_MAX_COMMITS: ${{ vars.BLOG_MAX_COMMITS || '30' }}
+          BLOG_MAX_MERGED_PRS: ${{ vars.BLOG_MAX_MERGED_PRS || '15' }}
+          BLOG_MAX_OPEN_PRS: ${{ vars.BLOG_MAX_OPEN_PRS || '20' }}
+          BLOG_MAX_ISSUES: ${{ vars.BLOG_MAX_ISSUES || '15' }}
         run: |
           REPOS=(
             "rivie13/Phoenix-Agentic-Engine"
@@ -116,67 +120,375 @@ jobs:
           else
             echo "has_activity=true" >> "$GITHUB_OUTPUT"
 
-            # Write activity data as JSON for the AI prompt
+            # Write full activity payload (includes totals + full arrays).
             jq -n \
+              --arg since "$SINCE" \
               --argjson commits "$ALL_COMMITS" \
               --argjson merged_prs "$MERGED_PRS" \
               --argjson open_prs "$OPEN_PRS" \
               --argjson issues "$ALL_ISSUES" \
-              '{commits: $commits, merged_prs: $merged_prs, open_prs: $open_prs, issues: $issues}' > /tmp/activity.json
+              --arg commit_count "$COMMIT_COUNT" \
+              --arg merged_pr_count "$MERGED_PR_COUNT" \
+              --arg open_pr_count "$OPEN_PR_COUNT" \
+              --arg issue_count "$ISSUE_COUNT" \
+              '{
+                meta: {
+                  window_since: $since,
+                  totals: {
+                    commits: ($commit_count | tonumber),
+                    merged_prs: ($merged_pr_count | tonumber),
+                    open_prs: ($open_pr_count | tonumber),
+                    issues: ($issue_count | tonumber)
+                  },
+                  note: "Full payload. Compact and ultra payloads are available as fallback tiers."
+                },
+                commits: $commits,
+                merged_prs: $merged_prs,
+                open_prs: $open_prs,
+                issues: $issues
+              }' > /tmp/activity.json
 
-            echo "Activity data written to /tmp/activity.json"
+            # Build token-budgeted compact payload for model calls.
+            COMMIT_HIGHLIGHTS=$(echo "$ALL_COMMITS" | jq --arg n "$BLOG_MAX_COMMITS" '.[0:($n|tonumber)]')
+            MERGED_PR_HIGHLIGHTS=$(echo "$MERGED_PRS" | jq --arg n "$BLOG_MAX_MERGED_PRS" '.[0:($n|tonumber)]')
+            OPEN_PR_HIGHLIGHTS=$(echo "$OPEN_PRS" | jq --arg n "$BLOG_MAX_OPEN_PRS" '.[0:($n|tonumber)]')
+            ISSUE_HIGHLIGHTS=$(echo "$ALL_ISSUES" | jq --arg n "$BLOG_MAX_ISSUES" '.[0:($n|tonumber)]')
+
+            jq -n \
+              --arg since "$SINCE" \
+              --argjson commits "$COMMIT_HIGHLIGHTS" \
+              --argjson merged_prs "$MERGED_PR_HIGHLIGHTS" \
+              --argjson open_prs "$OPEN_PR_HIGHLIGHTS" \
+              --argjson issues "$ISSUE_HIGHLIGHTS" \
+              --arg commit_count "$COMMIT_COUNT" \
+              --arg merged_pr_count "$MERGED_PR_COUNT" \
+              --arg open_pr_count "$OPEN_PR_COUNT" \
+              --arg issue_count "$ISSUE_COUNT" \
+              '{
+                meta: {
+                  window_since: $since,
+                  totals: {
+                    commits: ($commit_count | tonumber),
+                    merged_prs: ($merged_pr_count | tonumber),
+                    open_prs: ($open_pr_count | tonumber),
+                    issues: ($issue_count | tonumber)
+                  },
+                  note: "Arrays are intentionally truncated for token safety. Use totals for full counts."
+                },
+                commits: $commits,
+                merged_prs: $merged_prs,
+                open_prs: $open_prs,
+                issues: $issues
+              }' > /tmp/activity-compact.json
+
+            # Ultra-compact fallback payload for very small-context models.
+            jq -n \
+              --argjson commits "$(echo "$ALL_COMMITS" | jq '.[0:12]')" \
+              --argjson merged_prs "$(echo "$MERGED_PRS" | jq '.[0:8]')" \
+              --argjson open_prs "$(echo "$OPEN_PRS" | jq '.[0:10]')" \
+              --argjson issues "$(echo "$ALL_ISSUES" | jq '.[0:8]')" \
+              --arg commit_count "$COMMIT_COUNT" \
+              --arg merged_pr_count "$MERGED_PR_COUNT" \
+              --arg open_pr_count "$OPEN_PR_COUNT" \
+              --arg issue_count "$ISSUE_COUNT" \
+              '{
+                meta: {
+                  totals: {
+                    commits: ($commit_count | tonumber),
+                    merged_prs: ($merged_pr_count | tonumber),
+                    open_prs: ($open_pr_count | tonumber),
+                    issues: ($issue_count | tonumber)
+                  },
+                  note: "Ultra-compact fallback payload for strict token windows."
+                },
+                commits: $commits,
+                merged_prs: $merged_prs,
+                open_prs: $open_prs,
+                issues: $issues
+              }' > /tmp/activity-ultra.json
+
+            echo "Activity payloads written: /tmp/activity.json (full), /tmp/activity-compact.json, /tmp/activity-ultra.json"
           fi
 
-      # ── 6. Generate blog post via GitHub Models (GPT-5-chat) ──
+      # ── 6. Generate blog post (Pollinations-first, GitHub fallback) ──
       - name: Generate blog post
         if: steps.existing.outputs.exists == 'false' && steps.activity.outputs.has_activity == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
+          BLOG_TEXT_PROVIDER: ${{ vars.BLOG_TEXT_PROVIDER || 'pollinations' }}
+          BLOG_TEXT_MODEL_GITHUB: ${{ vars.BLOG_TEXT_MODEL_GITHUB || 'openai/gpt-5-chat' }}
+          BLOG_TEXT_MODEL_GITHUB_FALLBACK: ${{ vars.BLOG_TEXT_MODEL_GITHUB_FALLBACK || '' }}
+          BLOG_TEXT_MODEL_POLLINATIONS: ${{ vars.BLOG_TEXT_MODEL_POLLINATIONS || 'openai' }}
+          BLOG_TEXT_MODEL_POLLINATIONS_FALLBACK: ${{ vars.BLOG_TEXT_MODEL_POLLINATIONS_FALLBACK || 'openai-fast' }}
         run: |
           SLUG="${{ steps.dates.outputs.today }}-engine-daily-update"
           SYSTEM_PROMPT=$(cat prompts/daily-blog-system.md)
-          ACTIVITY=$(cat /tmp/activity.json)
+          ACTIVITY_FULL_FILE="/tmp/activity.json"
+          ACTIVITY_LIMITED_FILE="/tmp/activity-compact.json"
+          ACTIVITY_ULTRA_FILE="/tmp/activity-ultra.json"
 
-          USER_MESSAGE="Today's date: ${{ steps.dates.outputs.display }}
-          Date (ISO): ${{ steps.dates.outputs.today }}
-          Slug: ${SLUG}
+          TEXT_PROVIDER=$(echo "${BLOG_TEXT_PROVIDER}" | tr '[:upper:]' '[:lower:]')
+          WRITER_MODEL_GITHUB="${BLOG_TEXT_MODEL_GITHUB}"
+          WRITER_MODEL_GITHUB_FALLBACK="${BLOG_TEXT_MODEL_GITHUB_FALLBACK}"
+          WRITER_MODEL_POLLINATIONS="${BLOG_TEXT_MODEL_POLLINATIONS}"
+          WRITER_MODEL_POLLINATIONS_FALLBACK="${BLOG_TEXT_MODEL_POLLINATIONS_FALLBACK}"
 
-          Here is today's tracked-repo activity data (JSON):
+          POLLINATIONS_KEY=$(echo "${POLLINATIONS_API_KEY}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+          POLLINATIONS_KEY=$(echo "${POLLINATIONS_KEY}" | sed -E 's/^[Bb]earer[[:space:]]+//')
 
-          ${ACTIVITY}"
+          build_user_message() {
+            local activity_file="$1"
+            local payload_note="$2"
+            local activity_payload=""
+            activity_payload=$(cat "$activity_file")
+            printf "Today's date: ${{ steps.dates.outputs.display }}\nDate (ISO): ${{ steps.dates.outputs.today }}\nSlug: %s\n\nPayload tier: %s\n\nHere is today's tracked-repo activity data (JSON):\n\n%s\n\nImportant:\n- Use meta.totals for full counts.\n- Arrays may be truncated intentionally for token safety.\n- Prioritize the most technically meaningful items and avoid filler.\n" "$SLUG" "$payload_note" "$activity_payload"
+          }
 
-          # Call GitHub Models API — GPT-5-chat via workflow GITHUB_TOKEN
-          # gpt-5-chat: advanced, natural, context-aware — better for blog prose than gpt-5-mini.
-          # Anthropic/Claude is NOT available on GitHub Models.
-          # Model ID confirmed from: https://models.github.ai/catalog/models
-          RESPONSE=$(curl -s https://models.github.ai/inference/chat/completions \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -d "$(jq -n \
-              --arg system "$SYSTEM_PROMPT" \
-              --arg user "$USER_MESSAGE" \
-              '{
-                model: "openai/gpt-5-chat",
-                messages: [
-                  {role: "system", content: $system},
-                  {role: "user", content: $user}
-                ],
-                temperature: 0.7,
-                max_tokens: 2000
-              }')")
+          call_text_model() {
+            local provider="$1"
+            local model="$2"
+            local user_message="$3"
 
-          # Extract the generated content
-          CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+            if [ "$provider" = "pollinations" ]; then
+              if [ -z "$POLLINATIONS_KEY" ]; then
+                echo "::error::BLOG_TEXT_PROVIDER=pollinations but POLLINATIONS_API_KEY is missing"
+                return 1
+              fi
+
+              curl -sS https://gen.pollinations.ai/v1/chat/completions \
+                -H "Authorization: Bearer ${POLLINATIONS_KEY}" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n \
+                  --arg model "$model" \
+                  --arg system "$SYSTEM_PROMPT" \
+                  --arg user "$user_message" \
+                  '{
+                    model: $model,
+                    messages: [
+                      {role: "system", content: $system},
+                      {role: "user", content: $user}
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 2000
+                  }')"
+              return $?
+            fi
+
+            curl -sS https://models.github.ai/inference/chat/completions \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -d "$(jq -n \
+                --arg model "$model" \
+                --arg system "$SYSTEM_PROMPT" \
+                --arg user "$user_message" \
+                '{
+                  model: $model,
+                  messages: [
+                    {role: "system", content: $system},
+                    {role: "user", content: $user}
+                  ],
+                  temperature: 0.7,
+                  max_tokens: 2000
+                }')"
+          }
+
+          get_content() {
+            echo "$1" | jq -r '.choices[0].message.content // empty'
+          }
+
+          get_error_code() {
+            echo "$1" | jq -r '.error.code // .error.type // empty'
+          }
+
+          get_error_message() {
+            echo "$1" | jq -r '.error.message // empty'
+          }
+
+          is_context_error() {
+            local code="$1"
+            local message="$2"
+            echo "${code} ${message}" | grep -Eiq 'context|token|length|max.*(token|context)|prompt.*(too long|exceed)'
+          }
+
+          is_auth_error() {
+            local code="$1"
+            local message="$2"
+            echo "${code} ${message}" | grep -Eiq 'unauthorized|invalid_api_key|forbidden|authentication|auth|key'
+          }
+
+          attempt_generation() {
+            local provider="$1"
+            local model="$2"
+            local activity_file="$3"
+            local payload_label="$4"
+
+            if [ -z "$model" ]; then
+              return 1
+            fi
+
+            USER_MESSAGE=$(build_user_message "$activity_file" "$payload_label")
+            RESPONSE=$(call_text_model "$provider" "$model" "$USER_MESSAGE") || RESPONSE=""
+
+            CONTENT=$(get_content "$RESPONSE")
+            ERROR_CODE=$(get_error_code "$RESPONSE")
+            ERROR_MESSAGE=$(get_error_message "$RESPONSE")
+
+            if [ -n "$CONTENT" ]; then
+              MODEL_USED="$model"
+              PROVIDER_USED="$provider"
+              PAYLOAD_USED="$payload_label"
+              return 0
+            fi
+
+            if [ -n "$ERROR_CODE" ] || [ -n "$ERROR_MESSAGE" ]; then
+              echo "::warning::Text generation failed (provider=${provider}, model=${model}, payload=${payload_label}, code=${ERROR_CODE}, message=${ERROR_MESSAGE})"
+            fi
+
+            return 1
+          }
+
+          run_provider_chain() {
+            local provider="$1"
+            local primary_model="$2"
+            local fallback_model="$3"
+
+            local payload_files=("$ACTIVITY_FULL_FILE" "$ACTIVITY_LIMITED_FILE" "$ACTIVITY_ULTRA_FILE")
+            local payload_labels=("full" "limited" "ultra")
+
+            for i in 0 1 2; do
+              local payload_file="${payload_files[$i]}"
+              local payload_label="${payload_labels[$i]}"
+
+              if attempt_generation "$provider" "$primary_model" "$payload_file" "$payload_label"; then
+                return 0
+              fi
+
+              if is_auth_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+                echo "::warning::Stopping provider '${provider}' due to auth/key error and moving to cross-provider fallback."
+                return 1
+              fi
+
+              if [ -n "$fallback_model" ] && [ "$fallback_model" != "$primary_model" ]; then
+                if attempt_generation "$provider" "$fallback_model" "$payload_file" "$payload_label"; then
+                  return 0
+                fi
+
+                if is_auth_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+                  echo "::warning::Stopping provider '${provider}' due to auth/key error on fallback model and moving to cross-provider fallback."
+                  return 1
+                fi
+              fi
+            done
+
+            return 1
+          }
+
+          CONTENT=""
+          MODEL_USED=""
+          PROVIDER_USED=""
+          PAYLOAD_USED=""
+          ERROR_CODE=""
+          ERROR_MESSAGE=""
+
+          if [ "$TEXT_PROVIDER" = "github" ]; then
+            PRIMARY_PROVIDER="github"
+            SECONDARY_PROVIDER="pollinations"
+          else
+            PRIMARY_PROVIDER="pollinations"
+            SECONDARY_PROVIDER="github"
+          fi
+
+          if [ "$PRIMARY_PROVIDER" = "pollinations" ]; then
+            run_provider_chain "pollinations" "$WRITER_MODEL_POLLINATIONS" "$WRITER_MODEL_POLLINATIONS_FALLBACK" || true
+            if [ -z "$CONTENT" ]; then
+              echo "::warning::Pollinations provider exhausted payload tiers. Falling back to GitHub Models."
+              run_provider_chain "github" "$WRITER_MODEL_GITHUB" "$WRITER_MODEL_GITHUB_FALLBACK" || true
+            fi
+          else
+            run_provider_chain "github" "$WRITER_MODEL_GITHUB" "$WRITER_MODEL_GITHUB_FALLBACK" || true
+            if [ -z "$CONTENT" ]; then
+              echo "::warning::GitHub provider exhausted payload tiers. Falling back to Pollinations."
+              run_provider_chain "pollinations" "$WRITER_MODEL_POLLINATIONS" "$WRITER_MODEL_POLLINATIONS_FALLBACK" || true
+            fi
+          fi
 
           if [ -z "$CONTENT" ]; then
-            echo "::error::AI generation failed — no content returned"
-            if [ "$(echo "$RESPONSE" | jq -r '.error.code // empty')" = "unauthorized" ]; then
-              echo "::error::GitHub Models auth failed. Ensure workflow has 'permissions: models: read' and Models access is enabled in repository settings."
+            echo "::error::AI generation failed — no content returned after provider and payload fallbacks"
+            if is_auth_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+              if [ "$PRIMARY_PROVIDER" = "pollinations" ]; then
+                echo "::error::Pollinations auth likely failed and fallback also did not produce content. Check POLLINATIONS_API_KEY and provider access."
+              else
+                echo "::error::GitHub Models auth likely failed and fallback also did not produce content. Check workflow permissions and model access."
+              fi
+            fi
+            if [ -n "$ERROR_MESSAGE" ]; then
+              echo "::error::Last provider error: ${ERROR_MESSAGE}"
             fi
             echo "$RESPONSE" | jq .
             exit 1
+          fi
+
+          if is_context_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+            echo "::notice::Recovered generation despite context pressure using payload tier '${PAYLOAD_USED}'."
+          fi
+
+          if [ -z "$MODEL_USED" ] || [ -z "$PROVIDER_USED" ] || [ -z "$PAYLOAD_USED" ]; then
+            echo "::warning::Generation metadata missing; content exists but provider/model/payload tracking is incomplete."
+          else
+            echo "Generated blog content via provider=${PROVIDER_USED} model=${MODEL_USED} payload=${PAYLOAD_USED}"
+          fi
+
+          if [ -z "$RESPONSE" ]; then
+            RESPONSE='{}'
+          fi
+
+          # Keep compatibility with downstream logic expecting these symbols.
+          TEXT_PROVIDER="$PROVIDER_USED"
+
+          if [ -n "$ERROR_CODE" ] || [ -n "$ERROR_MESSAGE" ]; then
+            if [ "$PROVIDER_USED" = "github" ] && is_auth_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+              echo "::warning::GitHub Models reported auth-related issues during fallback attempts."
+            fi
+
+            if [ "$PROVIDER_USED" = "pollinations" ] && is_auth_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+              echo "::warning::Pollinations reported auth-related issues during fallback attempts."
+            fi
+          fi
+
+          if [ -z "$CONTENT" ]; then
+            echo "::error::AI generation failed — no content returned (provider=${TEXT_PROVIDER}, model=${MODEL_USED})"
+            if is_auth_error "$ERROR_CODE" "$ERROR_MESSAGE"; then
+              if [ "$TEXT_PROVIDER" = "github" ]; then
+                echo "::error::GitHub Models auth failed. Ensure workflow has 'permissions: models: read' and Models access is enabled in repository settings."
+              else
+                echo "::error::Pollinations auth failed. Ensure POLLINATIONS_API_KEY is valid and has pollen balance."
+              fi
+            fi
+            if [ -n "$ERROR_MESSAGE" ]; then
+              echo "::error::Provider error: ${ERROR_MESSAGE}"
+            fi
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          # If generation succeeded with limited/ultra, continue normally.
+          if [ "$PAYLOAD_USED" = "limited" ] || [ "$PAYLOAD_USED" = "ultra" ]; then
+            echo "::notice::Generation completed using '${PAYLOAD_USED}' payload tier."
+          fi
+
+          if [ "$PROVIDER_USED" = "" ]; then
+            PROVIDER_USED="$TEXT_PROVIDER"
+          fi
+
+          if [ "$MODEL_USED" = "" ]; then
+            if [ "$PROVIDER_USED" = "pollinations" ]; then
+              MODEL_USED="$WRITER_MODEL_POLLINATIONS"
+            else
+              MODEL_USED="$WRITER_MODEL_GITHUB"
+            fi
           fi
 
           # Split content into blog post and image prompt

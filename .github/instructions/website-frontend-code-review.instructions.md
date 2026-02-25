@@ -35,9 +35,9 @@ Priorities: security boundary hygiene, auth correctness, and maintainable UX.
 
 ## CLI tool policy (mandatory)
 
-- **NEVER use `gh` CLI** — it is not installed and must not be used.
-- **Always prefer GitHub MCP tools** (`mcp_github_*`) for all GitHub operations.
-- Fall back to terminal `git` commands only for local worktree operations or when MCP tools fail.
+- **Prefer GitHub MCP tools** (`mcp_github_*`) for structured GitHub operations.
+- **`gh` CLI is allowed** and may be used when MCP capability is unavailable/insufficient.
+- Use terminal `git` commands for local worktree operations.
 
 ## PR size discipline
 
@@ -47,6 +47,6 @@ Priorities: security boundary hygiene, auth correctness, and maintainable UX.
 
 ## Issue creation (public repo)
 
-- Create issues for trackable work using GitHub MCP tools — never `gh issue create`.
+- Prefer creating issues with GitHub MCP tools; `gh issue create` is acceptable when MCP is unavailable.
 - For non-sensitive, public-facing work: assign to Copilot (cloud agent).
 - Do NOT create public issues for private/sensitive matters.

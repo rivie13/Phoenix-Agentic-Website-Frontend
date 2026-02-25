@@ -4,7 +4,11 @@ This document describes the task management system used across all Phoenix repos
 
 ## Overview
 
-All Phoenix repos share a unified project board and task lifecycle called the **Ralph Loop** — a conditional iteration loop where each cycle picks a task, works it, completes it, and selects the next one. The loop includes a branch point for **local (IDE) vs. cloud agent** execution.
+All Phoenix repos share a unified project board and task lifecycle called the **Ralph Loop** — a conditional iteration loop where each cycle confirms the assigned task, works it, completes it, and then awaits the next assignment. The loop includes a branch point for **local (IDE) vs. cloud agent** execution.
+
+When running locally in the multi-repo IDE workspace, loop execution is coordinated by a workspace-level supervisor that receives webhook events once and routes them to repo-specific loops.
+
+> Pilot note (Website Frontend first): See `.github/docs/DISPATCHER_QA_PILOT_PLAN.md` for the dispatcher-only + QA-wait target model and phased rollout. In the current phase, docs/policy are updated first; workflow implementation changes are deferred until explicitly approved.
 
 **Repos in this system:**
 | Repo | Visibility | Description |
@@ -21,65 +25,73 @@ All Phoenix repos share a unified project board and task lifecycle called the **
 
 The Ralph Loop is the core task lifecycle. It is a **conditional iteration loop** — not a simple cycle, but a loop with a decision point that determines *how* each task is executed.
 
+The loop supports **three execution modes** (Local IDE, CLI Agent, Cloud Agent) that can run in parallel. See `.github/docs/WORKER_FACTORY.md` for the full concurrency model.
+
 ```
-┌──────────────────────────────────────────────────────┐
-│                   RALPH LOOP                         │
-│                                                      │
-│  ┌─────────────┐                                     │
-│  │  PICK TASK   │ ◄──────────────────────────────┐   │
-│  │  from board  │                                │   │
-│  └──────┬───────┘                                │   │
-│         │                                        │   │
-│         ▼                                        │   │
-│  ┌─────────────────┐                             │   │
-│  │  DECISION POINT  │                            │   │
-│  │  Local or Cloud? │                            │   │
-│  └───┬─────────┬────┘                            │   │
-│      │         │                                 │   │
-│  Local IDE  Cloud Agent                          │   │
-│      │         │                                 │   │
-│      ▼         ▼                                 │   │
-│  ┌────────┐ ┌──────────────┐                     │   │
-│  │  WORK  │ │ Copilot CCA  │                     │   │
-│  │  in VS │ │ works async  │                     │   │
-│  │  Code  │ │ opens PR     │                     │   │
-│  └───┬────┘ └──────┬───────┘                     │   │
-│      │             │                             │   │
-│      ▼             ▼                             │   │
-│  ┌─────────────────────┐                         │   │
-│  │   REVIEW + MERGE    │                         │   │
-│  │   (In Review → Done)│                         │   │
-│  └──────────┬──────────┘                         │   │
-│             │                                    │   │
-│             ▼                                    │   │
-│  ┌─────────────────────┐                         │   │
-│  │  RESET CURRENT_TASK │                         │   │
-│  │  pick next task ────┼─────────────────────────┘   │
-│  └─────────────────────┘                             │
-│                                                      │
-└──────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                        RALPH LOOP                             │
+│                                                               │
+│  ┌─────────────┐                                              │
+│  │  PICK TASK   │ ◄───────────────────────────────────────┐   │
+│  │  from board  │                                         │   │
+│  └──────┬───────┘                                         │   │
+│         │                                                 │   │
+│         ▼                                                 │   │
+│  ┌──────────────────────────┐                              │   │
+│  │     DECISION POINT       │                              │   │
+│  │  Local / CLI / Cloud?    │                              │   │
+│  └───┬─────────┬────────┬───┘                              │   │
+│      │         │        │                                  │   │
+│  Local IDE  CLI Agent  Cloud Agent                         │   │
+│      │         │        │                                  │   │
+│      ▼         ▼        ▼                                  │   │
+│  ┌────────┐ ┌────────┐ ┌──────────────┐                    │   │
+│  │  WORK  │ │  WORK  │ │ Copilot CCA  │                    │   │
+│  │  in VS │ │ local  │ │ works async  │                    │   │
+│  │  Code  │ │ wktree │ │ opens PR     │                    │   │
+│  └───┬────┘ └───┬────┘ └──────┬───────┘                    │   │
+│      │          │             │                            │   │
+│      ▼          ▼             ▼                            │   │
+│  ┌──────────────────────────────────┐                      │   │
+│  │        REVIEW + MERGE            │                      │   │
+│  │        (In Review → Done)        │                      │   │
+│  └──────────────┬───────────────────┘                      │   │
+│                 │                                          │   │
+│                 ▼                                          │   │
+│  ┌──────────────────────────────────┐                      │   │
+│  │ COMPLETE TASK + pick next ───────┼──────────────────────┘   │
+│  └──────────────────────────────────┘                          │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ### Loop Phases
 
-#### 1. PICK — Select the next task
-- Read `.github/context/CURRENT_TASK.md` to confirm no active task
-- Check the project board for items in **Ready** column
-- If nothing in Ready, check **Backlog** and promote the highest-priority item
-- Use the `focus` skill: say "pick next task" or "what should I work on?"
-- The agent reads the roadmap, checks the board, and recommends the next task
-- Create/assign a GitHub issue if one doesn't exist
+#### 1. CONFIRM ASSIGNMENT — Validate what was assigned
+- Confirm assigned issue/task from execution context (dispatcher prompt, local user instruction, or cloud assignment)
+- Consume webhook/event updates first (issue/project/label/PR transitions), sourced from dispatcher event intake
+- Workspace supervisor routes each event to the correct repo loop queue
+- Workspace meta queue may inject control decisions before repo queue consumption
+- Validate assignment against board state and active lock ownership
+- Confirm lock/dependency eligibility (`Area`, `Depends On`, `Lock Scope`, `Lock Key`, `Needed Files`)
+- If assignment is missing/ambiguous, request clarification before proceeding
 
-#### 2. DECIDE — Local IDE or Cloud Agent?
+#### 2. DECIDE — Local IDE, CLI Agent, or Cloud Agent?
 - **Local IDE**: Complex work requiring human judgment, multi-file refactors, architecture decisions, debugging
-- **Cloud Agent**: Well-scoped, self-contained tasks with clear acceptance criteria — bug fixes, test additions, doc updates, simple features
-- On the project board, set the **Work mode** field to "Local (IDE)" or "Cloud Agent"
+- **CLI Agent**: Well-scoped tasks that benefit from local context (file system, running services) but can run in parallel with your IDE work. Invoked via `copilot-cli`. Requires a clean (committed + pushed) base branch.
+- **Cloud Agent**: Self-contained tasks with clear acceptance criteria that need no local context — bug fixes, test additions, doc updates, simple features
+- **Lock/dependency preflight**: Before dispatch, check `Depends On` and lock overlap (`Area` + `Needed Files` + `Lock Scope` + `Lock Key`) on the board
+- On the project board, set the **Work mode** field to "Local (IDE)" or "Cloud Agent" (CLI uses Local IDE)
 - If Cloud Agent: add the `cloud-agent` label to the issue → automation assigns Copilot
+- **Area check**: `Area` is required. If missing, do not dispatch; return to triage/spec completion.
 
 #### 3. WORK — Execute the task
-- **Local path**: Agent fills in `CURRENT_TASK.md`, you work in VS Code, agent helps via chat, checkpoints are saved periodically
+- **Local path**: You study assigned issue context, work in VS Code with agent support, and save checkpoints to issue/board/run metadata
+- **CLI path**: Repo loop generates a minimal prompt file from dispatch arguments, invokes Codex CLI or Copilot CLI with that prompt, and the agent creates its worktree + branch, works independently, and opens a PR
 - **Cloud path**: Copilot coding agent works autonomously, opens a PR, you review when done
-- **Tangent handling**: If a bug or side task comes up during Local work, the tangent chat reads `CURRENT_TASK.md` and knows it's a tangent — the main task context is preserved
+- **Steering path**: if dispatcher receives new information mid-run, repo loop applies steering (`append_context`, `checkpoint_and_replan`, or `stop_and_requeue`) for the active run
+- **Tangent handling**: If a bug or side task comes up during Local work, keep the main assignment anchored to board state and run metadata while handling the tangent
+- **Concurrency**: Multiple agents can work in the same repo if they touch different areas. See `WORKER_FACTORY.md` for conflict rules.
 
 #### 4. REVIEW — Validate and merge
 - PR is opened → board item moves to **In Review**
@@ -91,10 +103,41 @@ The Ralph Loop is the core task lifecycle. It is a **conditional iteration loop*
   - Do NOT rely solely on `Closes #N` in the PR body — GitHub only auto-closes issues when merging into the default branch. Subfeature PRs merging into `feature/*` branches will NOT auto-close linked issues.
 - **Close completed sub-issues** — verify each sub-issue whose work was merged is closed. Close any that remain open.
 - **Close parent epic if all children are done** — if the completed task was a sub-issue, check the parent epic. If all siblings are closed, close the epic too.
+- **Release lock metadata** — clear or expire lock fields (`Lock Key`, lease/heartbeat values) when work is completed/terminated
 - Board item moves to **Done**
-- `CURRENT_TASK.md` is reset to "no active task"
-- The `focus` skill offers to pick the next task
+- The `focus` skill confirms the next assignment context
 - Loop restarts
+
+### Board lock/dependency gate (required)
+
+Treat merge queue as the final guardrail, not the first conflict detector. Before dispatching any item to Local/CLI/Cloud:
+
+1. Confirm `Depends On` prerequisites are completed.
+2. Ensure issue contains `Area`, `Lock Scope`, and (when available) `Needed Files`.
+3. Compute/assign `Lock Key`.
+4. Check active items for overlapping lock keys.
+5. If conflict exists, do not dispatch; re-queue or mark blocked with reason.
+
+### Trigger strategy (required)
+
+- Primary: webhook/event-driven dispatch triggers via external receiver.
+- Topology: one workspace supervisor for intake/routing, five repo loops for execution.
+- Queues: one workspace meta queue (global control) plus five repo micro queues (execution).
+- Constraint: Projects v2 webhooks exist, but `projects_v2*` are not listed as direct Actions workflow triggers; not all webhooks trigger workflows.
+- Secondary: low-frequency reconciliation polling to recover from missed deliveries and unsupported trigger classes.
+- Safety: all event handlers must be idempotent and re-check board state at claim time.
+
+### QA queue model (required)
+
+- Repo QA micro queue: concrete QA items for repo tasks in `QA Required`.
+- Workspace QA meta queue: operator sequencing queue for manual QA order (one-at-a-time), plus escalations/cross-repo dependencies/timeout control.
+- Workspace decisions may reprioritize or steer repo QA processing.
+- Active agent runs remain blocked on repo-specific QA wait sessions until your verdict is submitted.
+
+### QA requirement policy (required)
+
+- QA is required for any task with medium or high risk of user-facing impact, including new features/subfeatures, bug fixes, and refactors that could/do affect behavior.
+- QA is usually not required for docs-only or test-only changes, and for non-behavioral chore/refactor work with passing automated validation.
 
 > **CRITICAL:** Never skip issue closing. A task is not complete until its GitHub issue is verified closed.
 
@@ -272,8 +315,9 @@ The workflow requires the `PROJECT_BOARD_TOKEN` repository secret with `project`
 
 | File | Purpose |
 |------|---------|
-| `.github/context/CURRENT_TASK.md` | Active task pointer — read by agents at session start |
-| `.github/instructions/website-frontend-current-task.instructions.md` | Instruction telling agents to read CURRENT_TASK.md |
+| `.github/docs/WORKER_FACTORY.md` | Multi-agent concurrency model — area definitions, conflict rules, agent types |
+| Project board fields (`Status`, `Work mode`, `Area`, `Depends On`, `Needed Files`, `Lock Scope`, `Lock Key`) | Canonical task coordination and lock/dependency state |
+| `.github/instructions/website-frontend-current-task.instructions.md` | Instruction telling agents to read task context |
 | `.github/skills/focus/SKILL.md` | Skill for resume/pick/checkpoint/complete workflows |
 | `.github/workflows/project-board-sync.yml` | Auto-add issues/PRs to project board |
 | `.github/workflows/cloud-agent-assign.yml` | Auto-assign Copilot when `cloud-agent` label is added |

@@ -55,6 +55,10 @@ cross-repo project development activity.
 5. **Input data shape** — the activity JSON you receive has this structure:
    ```json
    {
+     "meta": {
+       "totals": { "commits": 0, "merged_prs": 0, "open_prs": 0, "issues": 0 },
+       "note": "Arrays may be truncated for token safety"
+     },
      "commits":    [{ "repo", "sha", "message", "author", "url" }],
      "merged_prs": [{ "repo", "number", "title", "state", "draft", "user", "url", "updated_at", "head_ref", "base_ref", "body_excerpt" }],
      "open_prs":   [{ "repo", "number", "title", "state", "draft", "user", "url", "updated_at", "head_ref", "base_ref", "body_excerpt" }],
@@ -64,6 +68,10 @@ cross-repo project development activity.
    `merged_prs` contains only PRs that were merged. `open_prs` contains only PRs
    that are currently open (including drafts and PRs under review). Never treat
    an open PR as merged.
+
+   The arrays can be intentionally truncated for token safety. If `meta.totals`
+   shows larger counts than array lengths, state that explicitly (for example,
+   "showing highlights from X of Y commits") and do not invent unseen details.
 
 6. **Depth and personality**:
    - Be specific and concrete. For each PR, include one short sentence on what it
@@ -81,6 +89,8 @@ cross-repo project development activity.
   item's provided `url`.
 9. **Length**: Aim for 450-800 words on normal days. For low-activity days,
    280-450 words is acceptable if details are limited.
+   If input is explicitly token-compacted, prioritize clarity over length and
+   keep the post concise rather than padding with generic text.
 10. Do **not** mention or speculate about any repositories outside the three
   tracked repos listed above.
 11. If the activity is very small (e.g. a single typo fix), keep the post short

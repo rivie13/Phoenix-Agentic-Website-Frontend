@@ -7,10 +7,10 @@ Use it whenever making code changes, preparing pull requests, or handling review
 
 ## CLI tool policy (mandatory)
 
-- **NEVER use `gh` CLI** — it is not installed in this environment and must not be used.
-- **Always prefer GitHub MCP tools** (`mcp_github_*`) for all GitHub operations (PRs, issues, reviews, actions, branches, searches, etc.).
-- Fall back to terminal `git` commands only for local worktree operations (status, add, commit, branch, checkout, rebase, push, pull, diff, log) or when MCP tools fail/are unavailable.
-- Do NOT suggest or attempt `gh pr create`, `gh issue create`, `gh run list`, or any other `gh` subcommand.
+- **Prefer GitHub MCP tools** (`mcp_github_*`) for structured GitHub operations (PRs, issues, reviews, actions, branches, searches, etc.).
+- **`gh` CLI is allowed and supported** in this environment. Use it when MCP capability is unavailable/insufficient, and for project/GraphQL-heavy operations.
+- Use terminal `git` commands for local worktree operations (status, add, commit, branch, checkout, rebase, push, pull, diff, log).
+- Keep tool usage explicit and reproducible in notes/comments so the same flow can be rerun.
 
 ## Branch hygiene
 
@@ -89,7 +89,7 @@ For small, standalone changes that do not belong to a larger feature:
 
 ## Pull request hygiene
 
-- **Always use GitHub MCP tools** for PR operations — never `gh` CLI.
+- **Prefer GitHub MCP tools** for PR operations; `gh` CLI is an acceptable fallback when MCP is unavailable.
 - Before creating PR:
   - Ensure branch is up to date with `main`
   - Ensure lint/typecheck/tests pass
@@ -121,7 +121,7 @@ For small, standalone changes that do not belong to a larger feature:
 
 ## GitHub MCP tool preference
 
-**Always use MCP tools** — never `gh` CLI. Prefer MCP tools for:
+**Prefer MCP tools first**, with `gh` CLI as fallback. Prefer MCP tools for:
 - Creating and updating PRs
 - Listing PRs/reviews/comments
 - Checking whether Copilot review already exists
@@ -131,7 +131,7 @@ For small, standalone changes that do not belong to a larger feature:
 - Creating and managing issues
 - Searching for existing issues
 
-Terminal git is still appropriate for local worktree tasks (status, branch, add/commit, rebase, tests).
+Use `gh` when needed for project/GraphQL operations, and terminal `git` for local worktree tasks (status, branch, add/commit, rebase, tests).
 
 ## PR size discipline (mandatory)
 
@@ -148,7 +148,7 @@ Terminal git is still appropriate for local worktree tasks (status, branch, add/
 
 ## Issue creation and Copilot assignment (public repo)
 
-- Create GitHub issues for trackable work items using `mcp_github_github_issue_write` — never `gh issue create`.
+- Prefer creating GitHub issues with `mcp_github_github_issue_write`; `gh issue create` is acceptable if MCP is unavailable.
 - Use issues to break large features into smaller, trackable units of work.
 - For public-facing, non-sensitive issues: assign to Copilot (cloud agent) when appropriate using `mcp_github_github_assign_copilot_to_issue`.
 - Do NOT create public issues or assign to Copilot for work involving private/sensitive matters (secrets, auth internals, proprietary logic, infrastructure details, security vulnerabilities).
@@ -181,7 +181,7 @@ The project board (rivie13/projects/3) has **separate fields** that are NOT labe
 | Field | Type | Values |
 |-------|------|--------|
 | **Priority** | Single select | P0 (Critical), P1 (High), P2 (Medium), P3 (Low) |
-| **Size** | Single select | XS, S, M, L |
+| **Size** | Single select | XS, S, M, L, XL |
 | **Work mode** | Single select | Cloud Agent, Local IDE |
 | **Status** | Single select | Backlog, Ready, In Progress, In Review, Done |
 | **Labels** | GitHub labels | `task`, `epic`, `feature`, `cloud-agent`, etc. |
@@ -217,19 +217,23 @@ MCP tools cannot set project board fields directly. Use **signal labels** as a b
 | `set:size:l` | Size | L |
 | `set:workmode:cloud-agent` | Work mode | Cloud Agent |
 | `set:workmode:local-ide` | Work mode | Local IDE |
+| `set:workmode:cli-agent` | Work mode | CLI Agent |
 | `set:status:backlog` | Status | Backlog |
 | `set:status:ready` | Status | Ready |
 | `set:status:in-progress` | Status | In Progress |
 | `set:status:in-review` | Status | In Review |
 | `set:status:done` | Status | Done |
+| `set:area:<area-name>` | Area | Area value (see WORKER_FACTORY.md for valid names per repo) |
 
 **Important:** Signal labels must exist in the repo before use. Run the `Sync Project Fields` workflow with the `create-signal-labels` dispatch action to bootstrap them.
 
 ### When to set project fields
 
-- **Issue creation/triage:** After creating an issue, add signal labels to set Priority, Size, and Work mode.
+- **Issue creation/triage:** After creating an issue, add signal labels to set Priority, Size, Work mode, and Area.
 - **Status transitions:** When starting work, set `set:status:in-progress`. When done, set `set:status:done`.
 - **The `cloud-agent` label** already triggers `cloud-agent-assign.yml` which sets Status → In Progress and Work mode → Cloud Agent. You do NOT need separate signal labels for those when using `cloud-agent`.
+- **Area:** Always set `set:area:*` to indicate which component the issue targets (see WORKER_FACTORY.md for valid names per repo).
+- **CLI-agent issues:** Add `set:workmode:cli-agent` + `set:area:*` (no separate `cloud-agent` label needed).
 
 ## Post-merge issue completion (mandatory)
 
@@ -259,3 +263,30 @@ After any PR is merged, **always close linked issues explicitly using MCP tools*
 - PR GitHub Actions checks are green (or explicitly understood/waived)
 - No API keys or secrets in client-side code
 - Security boundary rules from `docs/SECURITY_BOUNDARY.md` respected
+
+## Agent autonomy — branch, PR, and issue lifecycle
+
+Agents (Local IDE, CLI, Cloud) MUST handle their own git workflow end-to-end. The human should NOT need to manually create branches, open PRs, write PR descriptions, or close issues.
+
+### What every agent MUST do
+
+1. **Create the branch** before starting work — `git checkout -b subfeature/task/<desc>` from the correct base
+2. **Commit frequently** with conventional messages (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`)
+3. **Push to origin** — do not leave work only on local branches
+4. **Open a PR** when work is complete — use `mcp_github_github_create_pull_request`
+5. **Fill in the PR description** — summary, changes, testing done, related issues
+6. **Request Copilot review** if not auto-triggered
+7. **Close the issue explicitly** after PR merge — use `mcp_github_github_issue_write` (do not rely on `Closes #N` for non-default-branch merges)
+8. **Delete the branch** after merge if GitHub auto-delete is not configured
+
+### What the human does NOT need to do
+
+- Create branches (agent creates them)
+- Open PRs (agent opens via MCP)
+- Write PR descriptions (agent writes them)
+- Close issues (agent closes via MCP)
+- Move board cards (agent uses signal labels)
+
+The human's only required actions are **merging** (for medium/high risk PRs) and **resolving merge conflicts**.
+
+See `.github/docs/WORKER_FACTORY.md` for the full concurrency model and tiered review policy.
