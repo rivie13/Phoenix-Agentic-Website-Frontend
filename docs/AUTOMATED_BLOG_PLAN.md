@@ -132,6 +132,8 @@ on:
 All toggles are configured as **GitHub repo variables** (Settings → Variables →
 Actions) so they can be flipped in the UI without touching code:
 
+For copy/paste values and presets, see `docs/BLOG_VARIABLES_UI_SETUP.md`.
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BLOG_ENABLED` | `true` | Master kill switch — set to `false` to stop all blog generation |
@@ -139,6 +141,15 @@ Actions) so they can be flipped in the UI without touching code:
 | `BLOG_SOCIAL_LINKEDIN` | `false` | Post link to LinkedIn after PR is merged |
 | `BLOG_IMAGE_ENABLED` | `true` | Generate AI hero image (set `false` to skip and use logo) |
 | `BLOG_CROSSPOST_GITHUB_PAGES` | `false` | Cross-post a Jekyll version to `rivie13/rivie13.github.io` |
+| `BLOG_TEXT_PROVIDER` | `pollinations` | Preferred text provider: `pollinations` (Pollinations-first, GitHub fallback) |
+| `BLOG_TEXT_MODEL_GITHUB` | `openai/gpt-5-chat` | GitHub Models text model ID |
+| `BLOG_TEXT_MODEL_GITHUB_FALLBACK` | *(empty)* | Optional GitHub fallback model ID |
+| `BLOG_TEXT_MODEL_POLLINATIONS` | `openai` | Pollinations text model alias |
+| `BLOG_TEXT_MODEL_POLLINATIONS_FALLBACK` | `openai-fast` | Pollinations fallback model alias if primary fails |
+| `BLOG_MAX_COMMITS` | `30` | Max commits sent to model in compact payload |
+| `BLOG_MAX_MERGED_PRS` | `15` | Max merged PRs sent to model in compact payload |
+| `BLOG_MAX_OPEN_PRS` | `20` | Max open PRs sent to model in compact payload |
+| `BLOG_MAX_ISSUES` | `15` | Max issues sent to model in compact payload |
 
 The workflow checks these at the top and exits early if disabled:
 
@@ -158,11 +169,15 @@ jobs:
    - GET /repos/rivie13/Phoenix-Agentic-Engine/pulls?state=closed&sort=updated
    - GET /repos/rivie13/Phoenix-Agentic-Engine/issues?state=all&since=...
 4. If zero activity → exit early (no post)
-5. Generate blog post text via GitHub Models (OpenAI GPT-5-chat)
-   - System prompt loaded from prompts/daily-blog-system.md
-   - Activity data injected as user message
-   - Output: complete .md file with front matter
-    - Auth: uses workflow `GITHUB_TOKEN` with `permissions: models: read`
+5. Generate blog post text (Pollinations-first, GitHub fallback)
+  - System prompt loaded from `prompts/daily-blog-system.md`
+  - Activity is prepared in three payload tiers: `full`, `limited`, `ultra`
+  - Pollinations tries each tier first (`full` → `limited` → `ultra`) using primary model then fallback model
+  - If Pollinations cannot produce content, GitHub Models runs the same tiered fallback sequence
+  - If `BLOG_TEXT_PROVIDER=github`, order is reversed (GitHub first, Pollinations fallback)
+  - Output: complete `.md` file with front matter
+  - GitHub provider auth: workflow `GITHUB_TOKEN` with `permissions: models: read`
+  - Pollinations provider auth: `POLLINATIONS_API_KEY`
 6. If BLOG_IMAGE_ENABLED:
     - Validate `POLLINATIONS_API_KEY` and normalize either `sk_...` or `Bearer sk_...` formats
     - Validate key against `https://gen.pollinations.ai/account/key`
@@ -212,17 +227,15 @@ on).
 | Secret | Purpose |
 |--------|---------|
 | `GH_PAT` | **Optional for core blog generation.** Required only when `BLOG_CROSSPOST_GITHUB_PAGES=true` because cross-posting writes to `rivie13.github.io` (a second repo). |
-| `POLLINATIONS_API_KEY` | **Required for Pollinations hero images.** Set to your Pollinations key from `enter.pollinations.ai` (raw `sk_...` preferred; `Bearer sk_...` also accepted and normalized). |
+| `POLLINATIONS_API_KEY` | **Required for Pollinations hero images.** Also required if `BLOG_TEXT_PROVIDER=pollinations`. Set from `enter.pollinations.ai` (raw `sk_...` preferred; `Bearer sk_...` also accepted and normalized). |
 | `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Bluesky posting (only needed when toggle is on) |
 | `LINKEDIN_ACCESS_TOKEN` | LinkedIn posting (only needed when toggle is on) |
 
-> **Note on token:** This workflow uses `GITHUB_TOKEN` for GitHub Models inference, with explicit workflow permission `models: read`. If you see an error like "The `models` permission is required", verify that the workflow file includes `permissions: models: read` and rerun.
+> **Token safety rail:** The workflow now creates three payload tiers (`full`, `limited`, `ultra`) and automatically retries through them before giving up.
 
-> **Model confirmed from catalog.** Anthropic/Claude is **not available** on GitHub Models. The chosen model is `openai/gpt-5-chat` — "advanced, natural, multimodal, context-aware conversations" — better writing quality than `gpt-5-mini`. Both are `custom` rate-limit tier with 12 req/day (Copilot Pro), so 1 run/day is well within limits. Model ID verified via `GET https://models.github.ai/catalog/models`.
+> **Provider order:** Default is Pollinations-first with GitHub fallback. You can reverse it by setting `BLOG_TEXT_PROVIDER=github`.
 
-> **GitHub Models image fallback?** Not currently via the workflow's chat inference API. The catalog currently reports text output modalities for available chat models, so GitHub Models is used for text generation only in this pipeline.
-
-> **No `OPENAI_API_KEY` needed.** Text generation uses GPT-5-chat via GitHub Models. Image generation uses Pollinations `gen.pollinations.ai` with `POLLINATIONS_API_KEY` (Spore/Seed/Flower/Nectar access tiers). Note: the `turbo` fallback is **Pollinations.ai's own image model**, not related to GPT Turbo.
+> **No `OPENAI_API_KEY` needed.** Text generation uses either `GITHUB_TOKEN` (GitHub Models) or Pollinations key auth. Image generation always uses Pollinations `gen.pollinations.ai` with `POLLINATIONS_API_KEY`.
 
 All secrets are configured in GitHub repo settings. Social secrets are only
 required when you enable those toggles.
@@ -265,7 +278,7 @@ A separate image prompt template generates the DALL-E prompt:
 | Empty days | Workflow skips if no Engine activity detected |
 | Duplicate posts | Filename is date-stamped; workflow checks if branch/file already exists |
 | Image generation failure | Graceful fallback to Phoenix logo as hero image |
-| Cost | Low-cost/day — GitHub Models (`openai/gpt-5-chat`) plus Pollinations pollen usage for hero images (depends on your tier/balance) |
+| Cost | Configurable — use GitHub provider for text + Pollinations for image (lowest pollen usage), or Pollinations for both text+image if preferred |
 | Private info leak | Only Engine repo (public) is scanned; Backend is excluded |
 | Social post timing | Social posts only fire after PR merge, not on generation |
 | Accidental social spam | Both social toggles default to `false` |
@@ -326,6 +339,18 @@ Same location:
 ### Turn image generation on/off
 
 - `BLOG_IMAGE_ENABLED` → `true` / `false`
+
+### Choose text provider and model
+
+- `BLOG_TEXT_PROVIDER` → `pollinations` (recommended) or `github`
+- If `github`: set `BLOG_TEXT_MODEL_GITHUB` (default `openai/gpt-5-chat`)
+- Optional GitHub model fallback: `BLOG_TEXT_MODEL_GITHUB_FALLBACK`
+- If `pollinations`: set `BLOG_TEXT_MODEL_POLLINATIONS` (for example `openai`, `openai-fast`, `claude-fast`) and optional `BLOG_TEXT_MODEL_POLLINATIONS_FALLBACK`
+
+### Tune token budget
+
+- `BLOG_MAX_COMMITS`, `BLOG_MAX_MERGED_PRS`, `BLOG_MAX_OPEN_PRS`, `BLOG_MAX_ISSUES`
+- Lower values reduce prompt size/pollen usage and improve reliability for constrained model contexts
 
 ### Turn GitHub Pages cross-posting on/off
 

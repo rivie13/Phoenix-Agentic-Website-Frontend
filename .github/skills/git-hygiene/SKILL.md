@@ -7,10 +7,9 @@ description: Enforce branch hygiene, pre-commit validation, PR setup via GitHub 
 
 ## CLI tool policy (mandatory)
 
-- **NEVER use `gh` CLI** — it is not installed and must not be used.
-- **Always prefer GitHub MCP tools** (`mcp_github_*`) for all GitHub operations.
-- Fall back to terminal `git` commands only for local worktree operations or when MCP tools fail.
-- Do NOT suggest or attempt any `gh` subcommand.
+- **Prefer GitHub MCP tools** (`mcp_github_*`) for structured GitHub operations.
+- **`gh` CLI is allowed and supported**; use it when MCP capability is unavailable/insufficient, and for project/GraphQL-heavy operations.
+- Use terminal `git` commands for local worktree operations.
 
 ## Mandatory first step: terminal scope check
 
@@ -68,7 +67,9 @@ git commit -m "feat: <short summary>"
 
 Recommended prefixes: `feat`, `fix`, `chore`, `docs`, `test`.
 
-## PR workflow (use GitHub MCP tools — never `gh` CLI)
+## PR workflow (prefer GitHub MCP tools; allow `gh` fallback)
+
+Prefer GitHub MCP tools first; use `gh` CLI when MCP capability is unavailable.
 
 1. Create PR:
 
@@ -116,9 +117,9 @@ If any job fails, use the GitHub Actions Debug skill flow to inspect logs, fix r
 - No API keys or secrets in client-side code
 - Security boundary rules from `docs/SECURITY_BOUNDARY.md` respected
 
-## Issue creation (public repo — never use `gh` CLI)
+## Issue creation (public repo — MCP preferred, `gh` fallback allowed)
 
-- Create issues using `mcp_github_github_issue_write`.
+- Prefer creating issues using `mcp_github_github_issue_write`; `gh issue create` is acceptable if MCP is unavailable.
 - For non-sensitive, public-facing work: assign to Copilot (cloud agent) using `mcp_github_github_assign_copilot_to_issue`.
 - Do NOT create public issues for private/sensitive matters.
 - Search for existing issues before creating duplicates using `mcp_github_github_search_issues`.
@@ -157,10 +158,11 @@ The `sync-project-fields.yml` workflow detects signal labels, sets the project f
 |---|---|
 | `set:priority:p0` – `set:priority:p3` | Priority → P0–P3 |
 | `set:size:xs` / `s` / `m` / `l` | Size → XS/S/M/L |
-| `set:workmode:cloud-agent` / `local-ide` | Work mode → Cloud Agent / Local IDE |
+| `set:workmode:cloud-agent` / `local-ide` / `cli-agent` | Work mode → Cloud Agent / Local IDE / CLI Agent |
 | `set:status:backlog` / `ready` / `in-progress` / `in-review` / `done` | Status → corresponding value |
+| `set:area:<area-name>` | Area → area value (see WORKER_FACTORY.md for valid names per repo) |
 
-**When to set fields:** On issue creation or when triaging. For `cloud-agent` labeled issues, the `cloud-agent-assign.yml` workflow already sets Work mode and Status — only add `set:priority:*` and `set:size:*` signal labels.
+**When to set fields:** On issue creation or when triaging. For `cloud-agent` labeled issues, the `cloud-agent-assign.yml` workflow already sets Work mode and Status — only add `set:priority:*`, `set:size:*`, and `set:area:*` signal labels.
 
 ## Post-merge issue completion (mandatory)
 
